@@ -417,6 +417,10 @@ class Notion:
         return sources[0]['id'] if sources else res.get('id')
 
 
+def is_page_id(s):
+    return bool(s) and bool(re.fullmatch(r'[0-9a-f]{32}|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}', str(s)))
+
+
 def prop_text(p):
     if not p:
         return ''
@@ -733,7 +737,7 @@ class Store:
     def log_rows(self, read_id, kind_name):
         """Rows already in the Reading log for this Read and Kind (Notion plus this run): [{date, page, total}], oldest first."""
         rows = [dict(r) for r in self.seen_rows.get(read_id, []) if r['kind'] == kind_name]
-        if self.notion:
+        if self.notion and is_page_id(read_id):  # a Read planned this run (dry run) has no rows in Notion yet
             for r in self.notion.query_all(cfg('NOTION_LOG_DS'), {'and': [
                     {'property': 'Read', 'relation': {'contains': read_id}}, {'property': 'Kind', 'select': {'equals': kind_name}}]}):
                 p = r['properties']

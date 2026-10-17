@@ -4,6 +4,7 @@ Run with: python3 -m unittest discover sync
 """
 import json
 import os
+import re
 import sys
 import unittest
 from pathlib import Path
@@ -52,6 +53,8 @@ def _match(flt, page):
     if 'relation' in flt:
         ids, c = [r['id'] for r in p.get('relation', [])], flt['relation']
         if 'contains' in c:
+            if not re.fullmatch(r'[0-9a-z-]{4,36}', c['contains']) or c['contains'] == 'planned':
+                raise RuntimeError(f"Notion POST query -> 400: relation.contains should be a valid uuid, instead was {c['contains']!r}")
             return c['contains'] in ids
         if 'is_empty' in c:
             return not ids
@@ -1119,9 +1122,10 @@ class CreateTests(unittest.TestCase):
         self.assertEqual(report['questions'][0]['kind'], 'Finish date')
 
     def test_dry_run_plans_the_create_and_the_question(self):
-        report, _ = self.ws.sync([self.start], dry_run=True)
+        report, _ = self.ws.sync([self.start, progress_item('UserStatus324', 'Mon, 05 Oct 2026 21:00:00 -0400', '56346987', 'Lonesome Dove', 20, 964)], dry_run=True)
         self.assertEqual(self.ws.n.writes, [])
-        self.assertEqual([(x['op'], x['ds']) for x in report['plan']], [('create', READS_DS), ('create', QUEUE_DS), ('create', LOG_DS)])  # the Read, its question, its Started row
+        self.assertEqual(report['errors'], [])  # the planned Read's placeholder id never reaches Notion
+        self.assertEqual([(x['op'], x['ds']) for x in report['plan']], [('create', READS_DS), ('create', QUEUE_DS), ('create', LOG_DS), ('create', LOG_DS)])  # the Read, its question, its rows
         self.assertEqual(report['questions'][0]['kind'], 'Edition')
 
 
