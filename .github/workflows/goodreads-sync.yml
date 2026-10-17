@@ -1,0 +1,56 @@
+# Nightly Goodreads -> Notion sync (docs/SYNC_REVIEW.md, "Where the job runs").
+# Durable state lives in Notion (the Reading log's Goodreads ids, the Sync queue and its 'Sync run'
+# watermark rows), so the throw-away checkout is fine. Nothing is committed by the job.
+name: Goodreads sync
+
+on:
+  schedule:
+    # 04:45 UTC = 23:45 Eastern in winter, 00:45 in summer: the evening's updates are in either way.
+    - cron: '45 4 * * *'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Dry run: read Notion and print the plan, write nothing'
+        type: boolean
+        default: false
+      since:
+        description: 'Override the watermark (YYYY-MM-DD): take events and shelf items after this date'
+        type: string
+        default: ''
+
+concurrency:
+  group: goodreads-sync
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Unit tests
+        run: python3 -m unittest discover sync
+      - name: Sync
+        env:
+          NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
+          GOODREADS_USER_ID: ${{ secrets.GOODREADS_USER_ID }}
+          GOODREADS_RSS_KEY: ${{ secrets.GOODREADS_RSS_KEY }}
+          SYNC_TZ: America/New_York
+        run: |
+          args=""
+          if [ "${{ inputs.dry_run }}" = "true" ]; then args="$args --dry-run"; fi
+          if [ -n "${{ inputs.since }}" ]; then args="$args --since ${{ inputs.since }}"; fi
+          python3 sync/goodreads_sync.py $args
+      - name: Keep the run's questions and feed archive
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: goodreads-sync-${{ github.run_id }}
+          path: |
+            sync/unmatched.json
+            sync/feed_archive/
+          if-no-files-found: ignore
+          retention-days: 90
