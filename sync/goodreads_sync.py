@@ -25,6 +25,7 @@ Usage:
 """
 import argparse
 import html
+import unicodedata
 import json
 import os
 import re
@@ -273,12 +274,19 @@ def prop_select(p):
 STOP = re.compile(r'^(the|a|an)\s+', re.I)
 
 
+# Goodreads title -> Notion title, both normalised; only for works whose titles genuinely differ
+ALIASES = {'nineteen eighty four': '1984', 'autobiography and other writings': 'benjamin franklin the autobiography'}
+
+
 def norm(s):
-    s = (s or '').lower().replace('&', 'and')
+    s = unicodedata.normalize('NFKD', s or '')
+    s = ''.join(c for c in s if not unicodedata.combining(c))
+    s = s.lower().replace('&', 'and')
     s = re.sub(r'[‘’“”]', "'", s)
     s = re.sub(r'[^a-z0-9\' ]+', ' ', s)
     s = STOP.sub('', squeeze(s))
-    return squeeze(s)
+    s = squeeze(s)
+    return ALIASES.get(s, s)
 
 
 def main_title(s):
@@ -327,12 +335,21 @@ class Library:
 
     def match(self, title, author):
         nt, mt, sn = norm(title), main_title(title), surname(author) if author else ''
-        cands = [b for b in self.books if b['norm'] == nt] or [b for b in self.books if b['main'] == mt and mt] \
+        # Goodreads often writes "Series title, Books 1-5: The Real Title" or "(Series, #1)": try each segment too
+        segs = [norm(x) for x in re.split(r'[:(\u2014]| - ', title or '') if norm(x)]
+        cands = [b for b in self.books if b['norm'] == nt] or [b for b in self.books if b['norm'] in segs] \
+            or [b for b in self.books if b['main'] in segs and b['main'] != b['norm']] \
+            or [b for b in self.books if b['main'] == mt and mt] \
             or [b for b in self.books if mt and (b['norm'].startswith(mt) or nt.startswith(b['main']))]
         if len(cands) > 1 and sn:
             by_author = [b for b in cands if sn in b['surnames']]
             if by_author:
                 cands = by_author
+        if len(cands) > 1:
+            # the longest Notion title that the Goodreads title starts with wins ("Stalin: Waiting for Hitler" over "Stalin")
+            pref = sorted([b for b in cands if nt.startswith(b['norm'])], key=lambda b: -len(b['norm']))
+            if pref and (len(pref) == 1 or len(pref[0]['norm']) > len(pref[1]['norm'])):
+                cands = [pref[0]]
         if len(cands) == 1:
             return cands[0], 'ok'
         if not cands:
