@@ -1464,5 +1464,25 @@ class ExitCodeTests(unittest.TestCase):
         self.assertEqual(gs.exit_code({'partial': False, 'errors': ['x'], 'nothing_fetched': False}), 1)  # a write failed
 
 
+# ---------------------------------------------------------------- step 9: the sync_queue dataset
+class ExportQueueTests(unittest.TestCase):
+    def test_export_lists_open_questions_with_titles(self):
+        ws = Workspace()
+        b = ws.book('Lonesome Dove', 'Larry McMurtry')
+        r = ws.read('Lonesome Dove · 2026', b, started='2026-10-04')
+        ws.question('Edition', 'Which copy are you reading “Lonesome Dove” in? [default: Kindle · S&S]', f'edition:{r}', book=b, read=r, proposed='Kindle · S&S (the only owned copy)',
+                    default_applied=True, asked='2026-10-16T23:45:00-04:00')
+        ws.question('Gap', 'gap', 'gap:x', asked='2026-10-15T23:45:00-04:00', default_applied=True, proposed='noted')
+        ws.question('Pages read', 'answered one', 'pages:old', status='Answered', asked='2026-10-10T23:45:00-04:00')
+        sync_run_row(ws, '2026-10-16T23:45:00-04:00')
+        lib = gs.Library(ws.n)
+        lib.load()
+        rows = gs.export_queue(gs.Store(ws.n, lib), lib)
+        self.assertEqual([x['kind'] for x in rows], ['Edition', 'Gap'])  # open only, newest first, no Sync run rows
+        self.assertEqual((rows[0]['book'], rows[0]['read'], rows[0]['asked'], rows[0]['default_applied']), ('Lonesome Dove', 'Lonesome Dove · 2026', '2026-10-16', True))
+        self.assertEqual(rows[0]['proposed'], 'Kindle · S&S (the only owned copy)')
+        self.assertTrue(rows[0]['question'].startswith('Which copy'))
+
+
 if __name__ == '__main__':
     unittest.main()

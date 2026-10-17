@@ -31,3 +31,5 @@ backlog = [dict(dimension='Genre', pool=r['pool'], key=r['genre'], fiction=r['fi
         + [dict(dimension='Length', pool=r['pool'], key=r['length'], books=r['books'], pages=r['pages']) for r in L('backlog_length')] \
         + [dict(dimension='Canon', pool=r['pool'], key=r['canon'], books=r['books'], pages=r['pages']) for r in L('backlog_canon')]
 W('backlog', backlog)
+# the sync's open questions (python3 sync/goodreads_sync.py --export-queue data/out/sync_queue.json); an empty list when never exported
+W('sync_queue', L('sync_queue') if os.path.exists(f'{O}/sync_queue.json') else [])

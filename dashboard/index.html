@@ -17,6 +17,10 @@
 .lib .lib-tile .lib-k { color: var(--color-fg-muted); font-size: var(--cds-font-size-caption); margin-bottom: var(--cds-gap-xs); }
 .lib .lib-tile .lib-v { font-family: var(--font-anthropic-serif); font-weight: 400; font-size: 2rem; line-height: 1.1; }
 .lib .lib-tile .lib-s { color: var(--color-fg-muted); font-size: var(--cds-font-size-caption); margin-top: var(--cds-gap-xs); }
+.lib .lib-tile-btn { cursor: pointer; }
+.lib .lib-tile-btn:hover, .lib .lib-tile-btn:focus-visible { border-color: var(--color-fg-muted); }
+.lib .lib-tile-btn[aria-expanded=true] { border-color: var(--color-fg); }
+.lib #c-unconfirmed td:nth-child(2) { min-width: 16rem; }
 .lib .lib-chart { position: relative; width: 100%; }
 .lib .lib-chart svg { display: block; width: 100%; height: auto; overflow: visible; }
 .lib .lib-chart text { font-family: var(--font-anthropic-sans); }
@@ -68,6 +72,12 @@
   <div class="lib-card lib-tile"><div class="lib-k">Copies owned</div><div class="lib-v dash-skeleton" data-source="headline" data-field="owned_copies" data-row="0">—</div><div class="lib-s"><span data-source="headline" data-field="owned_paper" data-row="0">—</span> paper · <span data-source="headline" data-field="owned_kindle" data-row="0">—</span> Kindle</div></div>
   <div class="lib-card lib-tile"><div class="lib-k">Shelf read</div><div class="lib-v dash-skeleton" data-source="headline" data-field="shelf_read_pct" data-row="0">—</div><div class="lib-s">of <span data-source="headline" data-field="owned_books" data-row="0">—</span> owned works read or in progress</div></div>
   <div class="lib-card lib-tile"><div class="lib-k">Backlog</div><div class="lib-v dash-skeleton" data-source="headline" data-field="backlog_books" data-row="0">—</div><div class="lib-s">books · about <span data-source="headline" data-field="backlog_years_at_pace" data-row="0">—</span> years at current pace</div></div>
+  <div class="lib-card lib-tile lib-tile-btn" id="t-unconfirmed" role="button" tabindex="0" aria-controls="c-unconfirmed" aria-expanded="false"><div class="lib-k">Unconfirmed</div><div class="lib-v dash-skeleton" data-source="sync_queue" data-count="rows">—</div><div class="lib-s">Goodreads sync questions awaiting a yes · click to see them</div></div>
+</div>
+<div class="lib-grid lib-wide" id="unconfirmed-wrap" hidden>
+  <div class="lib-card" id="c-unconfirmed"><button type="button" class="lib-ov-x" id="unconfirmed-x" aria-label="Close">×</button><h3>Unconfirmed sync questions</h3><p class="lib-note">Each one already has its default applied in Notion; tick Confirm in the Sync queue, or say "anything to resolve?" and "confirm all" in chat</p>
+    <div class="lib-scroll"><table data-source="sync_queue" data-row-key="key" data-table="queue"><thead><tr><th data-field="kind">Kind</th><th data-field="question">Question</th><th data-field="proposed">Default applied</th><th data-field="book">Book</th><th data-field="asked">Asked</th></tr></thead><tbody></tbody></table></div>
+    <p class="lib-cap">The count is as of the last dashboard refresh; the Sync queue in Notion is live. Questions never expire, so the tile means something.</p></div>
 </div>
 <p class="lib-sub">Snapshot of the Notion Library databases (Books, Editions, Reads, Authors) as of <span data-source="headline" data-field="as_of" data-row="0">—</span>. "Read" means a Read with Outcome = Finished; a DNF never counts. Pages per read are the Pages read field (indexes and appendices skipped), else the copy's or the book's page count. Click a bar for the data behind it; the × closes the view.</p>
 
@@ -435,6 +445,13 @@
       el.textContent = f === 'shelf_read_pct' ? fmt(+v) + '%' : (typeof v === 'number' ? (Number.isInteger(v) ? fmt(v) : fmt1(v)) : String(v ?? '—'));
     });
 
+    // the sync's open questions (dataset sync_queue): the tile shows the count, the card lists them
+    const sq = dash.data('sync_queue');
+    { const v = root.querySelector('#t-unconfirmed .lib-v'); if (sq.status === 'ok') { v.classList.remove('dash-skeleton'); v.textContent = fmt(sq.data.length); } else v.textContent = '—';
+      const t = root.querySelector('[data-table=queue]');
+      fillTable(t, sq.status === 'ok' ? sq.data.slice().sort((a, b) => String(b.asked).localeCompare(String(a.asked))) : [], [{ key: 'kind' }, { key: 'question' }, { key: 'proposed' }, { key: 'book' }, { key: 'asked' }]);
+      if (sq.status === 'ok' && !sq.data.length) { const tb = t.querySelector('tbody'); const tr = document.createElement('tr'); const td = document.createElement('td'); td.colSpan = 5; td.textContent = 'Nothing to confirm.'; tr.appendChild(td); tb.appendChild(tr); } }
+
     const bl = dash.data('backlog');
     const by = dash.data('by_year');
     const yearSeries = {
@@ -548,6 +565,13 @@
     { const box = chart('backlogLength'); if (ready(box, bl)) hbars(box, pivot('Length', 99, ['Under 200', '200–399', '400–599', '600–899', '900+', 'No page count']), 'key', pools, { extra, onClick: r => backlogDetail(box, r, 'Books waiting of this length') }); }
     { const box = chart('backlogCanon'); if (ready(box, bl)) hbars(box, pivot('Canon', 99, ['Classic', 'Canonical work', 'Not canon']), 'key', pools, { extra, onClick: r => backlogDetail(box, r, 'Books waiting with this canon tag') }); }
   });
+
+  // the Unconfirmed tile toggles its card
+  { const tile = root.querySelector('#t-unconfirmed'), wrap = root.querySelector('#unconfirmed-wrap');
+    const show = on => { wrap.hidden = !on; tile.setAttribute('aria-expanded', String(on)); if (on) wrap.scrollIntoView({ block: 'nearest' }); };
+    tile.addEventListener('click', () => show(wrap.hidden));
+    tile.addEventListener('keydown', ev => { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); show(wrap.hidden); } });
+    root.querySelector('#unconfirmed-x').addEventListener('click', () => show(false)); }
 
   // links
   const named = document.getElementById(location.hash.slice(1));

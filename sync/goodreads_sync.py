@@ -1550,6 +1550,20 @@ class Run:
                            options="Answer 'still' to keep it open, or 'finished YYYY-MM-DD [pages N]' / 'dnf YYYY-MM-DD [pages N]' to close it", reask_days=14)
 
 
+def export_queue(store, lib):
+    """The open questions as the dashboard's sync_queue dataset: one row per Open question, newest first."""
+    queue = SyncQueue(store)
+    titles = {b['id']: b['title'] for b in lib.books}
+    rows = []
+    for q in sorted(queue.open_rows(), key=lambda q: q['asked'] or '', reverse=True):
+        if q['kind'] == 'Sync run':
+            continue
+        read = store.read(q['read']) if q.get('read') else None
+        rows.append({'kind': q['kind'], 'question': q['question'], 'proposed': q['proposed'], 'options': q['options'], 'default_applied': q['default_applied'],
+                     'book': titles.get(q.get('book'), ''), 'read': read['title'] if read else '', 'asked': (q['asked'] or '')[:10], 'key': q['key']})
+    return rows
+
+
 def feed_window(items):
     times = sorted(x for x in (rfc_iso(it['pubDate']) for it in items) if x)
     return {'oldest': times[0] if times else None, 'newest': times[-1] if times else None, 'n': len(items)}
@@ -1631,6 +1645,15 @@ def run(args):
         print(f'NOTION_QUEUE_DS={ds}')
         print('Add that line to sync/.env and to the workflow env (and as the default in goodreads_sync.py).')
         return 0
+    if args.export_queue:
+        notion = Notion(cfg('NOTION_TOKEN', required=True))
+        cfg('NOTION_QUEUE_DS', required=True)
+        lib = Library(notion)
+        lib.load()
+        rows = export_queue(Store(notion, lib), lib)
+        Path(args.export_queue).write_text(json.dumps(rows, ensure_ascii=False) + '\n', encoding='utf-8')
+        log(f'{len(rows)} open question(s) written to {args.export_queue}')
+        return 0
     state = load_state()
     fixtures = {'updates': args.fixture, 'currently-reading': args.shelf_fixture, 'read': args.read_fixture, 'did-not-finish': args.dnf_fixture, 'to-read': args.to_read_fixture}
     urls = feed_urls() if not (args.fixture and (args.parse_only or all(fixtures[s] for s in SHELVES) or not args.fetch_shelves)) else {}
@@ -1697,6 +1720,7 @@ def parse_args(argv=None):
     ap.add_argument('--offline-library', metavar='DIR', help='match against data/raw/*.json instead of Notion; implies dry run')
     ap.add_argument('--plan', metavar='FILE', help='save the planned writes as JSON (any mode)')
     ap.add_argument('--init-queue', action='store_true', help='create the Sync queue database under the Library page and print its id')
+    ap.add_argument('--export-queue', metavar='FILE', help="write the open questions as the dashboard's sync_queue dataset (JSON) and stop")
     return ap.parse_args(argv)
 
 
