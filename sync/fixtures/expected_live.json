@@ -1,259 +1,267 @@
-[
- {
-  "op": "create",
-  "ds": "ced88101-f6c5-4e4e-9c1f-8305afeb2e7e",
-  "props": {
-   "Name": {
-    "title": [
-     {
-      "text": {
-       "content": "Release It! · Finished · 2026-10-15"
+{
+ "plan": [
+  {
+   "op": "create",
+   "ds": "ced88101-f6c5-4e4e-9c1f-8305afeb2e7e",
+   "props": {
+    "Name": {
+     "title": [
+      {
+       "text": {
+        "content": "Release It! · Finished · 2026-10-15"
+       }
       }
-     }
-    ]
-   },
-   "Book": {
-    "relation": [
-     {
-      "id": "3fb1b15c8b7781f589afcb844d988c5d"
-     }
-    ]
-   },
-   "When": {
-    "date": {
-     "start": "2026-10-15T05:29:00-07:00"
-    }
-   },
-   "Kind": {
-    "select": {
-     "name": "Finished"
-    }
-   },
-   "Source": {
-    "select": {
-     "name": "Goodreads"
-    }
-   },
-   "Goodreads id": {
-    "rich_text": [
-     {
-      "text": {
-       "content": "ReadStatus11503529259"
+     ]
+    },
+    "Book": {
+     "relation": [
+      {
+       "id": "3fb1b15c8b7781f589afcb844d988c5d"
       }
+     ]
+    },
+    "When": {
+     "date": {
+      "start": "2026-10-15T05:29:00-07:00"
      }
-    ]
-   },
-   "Raw": {
-    "rich_text": [
-     {
-      "text": {
-       "content": "Dan finished reading Release It!: Design and Deploy Production-Ready Software by Michael T. Nygard"
+    },
+    "Kind": {
+     "select": {
+      "name": "Finished"
+     }
+    },
+    "Source": {
+     "select": {
+      "name": "Goodreads"
+     }
+    },
+    "Goodreads id": {
+     "rich_text": [
+      {
+       "text": {
+        "content": "ReadStatus11503529259"
+       }
       }
+     ]
+    },
+    "Raw": {
+     "rich_text": [
+      {
+       "text": {
+        "content": "Dan finished reading Release It!: Design and Deploy Production-Ready Software by Michael T. Nygard"
+       }
+      }
+     ]
+    },
+    "Read": {
+     "relation": [
+      {
+       "id": "3fb1b15c8b77813dae4df7315852c078"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "op": "create",
+   "ds": "ced88101-f6c5-4e4e-9c1f-8305afeb2e7e",
+   "props": {
+    "Name": {
+     "title": [
+      {
+       "text": {
+        "content": "Fundamentals of Software Architecture · Started · 2026-10-15"
+       }
+      }
+     ]
+    },
+    "Book": {
+     "relation": [
+      {
+       "id": "3fb1b15c8b778146be94d0104292e0d4"
+      }
+     ]
+    },
+    "When": {
+     "date": {
+      "start": "2026-10-15T07:00:00-07:00"
      }
-    ]
-   },
-   "Read": {
-    "relation": [
-     {
-      "id": "3fb1b15c8b77813dae4df7315852c078"
+    },
+    "Kind": {
+     "select": {
+      "name": "Started"
      }
-    ]
+    },
+    "Source": {
+     "select": {
+      "name": "Goodreads"
+     }
+    },
+    "Goodreads id": {
+     "rich_text": [
+      {
+       "text": {
+        "content": "ReadStatus11503764988"
+       }
+      }
+     ]
+    },
+    "Raw": {
+     "rich_text": [
+      {
+       "text": {
+        "content": "Dan started reading Fundamentals of Software Architecture: A Modern Engineering Approach by Mark Richards"
+       }
+      }
+     ]
+    },
+    "Read": {
+     "relation": [
+      {
+       "id": "3fb1b15c8b7781aab16bc0334e65f692"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "op": "create",
+   "ds": "ced88101-f6c5-4e4e-9c1f-8305afeb2e7e",
+   "props": {
+    "Name": {
+     "title": [
+      {
+       "text": {
+        "content": "Fundamentals of Software Architecture · Progress p.63 · 2026-10-16"
+       }
+      }
+     ]
+    },
+    "Book": {
+     "relation": [
+      {
+       "id": "3fb1b15c8b778146be94d0104292e0d4"
+      }
+     ]
+    },
+    "When": {
+     "date": {
+      "start": "2026-10-16T13:30:18-07:00"
+     }
+    },
+    "Kind": {
+     "select": {
+      "name": "Progress"
+     }
+    },
+    "Source": {
+     "select": {
+      "name": "Goodreads"
+     }
+    },
+    "Goodreads id": {
+     "rich_text": [
+      {
+       "text": {
+        "content": "UserStatus1350810215"
+       }
+      }
+     ]
+    },
+    "Raw": {
+     "rich_text": [
+      {
+       "text": {
+        "content": "Dan is on page 63 of 869 of Fundamentals of Software Architecture ."
+       }
+      }
+     ]
+    },
+    "Read": {
+     "relation": [
+      {
+       "id": "3fb1b15c8b7781aab16bc0334e65f692"
+      }
+     ]
+    },
+    "Page": {
+     "number": 63
+    },
+    "Of pages": {
+     "number": 869
+    },
+    "Percent": {
+     "number": 7.2
+    }
+   }
+  },
+  {
+   "op": "create",
+   "ds": "ced88101-f6c5-4e4e-9c1f-8305afeb2e7e",
+   "props": {
+    "Name": {
+     "title": [
+      {
+       "text": {
+        "content": "The Cauldron: The Making of the Modern Middle East · DNF · 2026-10-16"
+       }
+      }
+     ]
+    },
+    "Book": {
+     "relation": [
+      {
+       "id": "3fb1b15c8b7781709f4ede5b054ae912"
+      }
+     ]
+    },
+    "When": {
+     "date": {
+      "start": "2026-10-16T19:18:50-07:00"
+     }
+    },
+    "Kind": {
+     "select": {
+      "name": "DNF"
+     }
+    },
+    "Source": {
+     "select": {
+      "name": "Goodreads"
+     }
+    },
+    "Goodreads id": {
+     "rich_text": [
+      {
+       "text": {
+        "content": "ReadStatus11507032651"
+       }
+      }
+     ]
+    },
+    "Raw": {
+     "rich_text": [
+      {
+       "text": {
+        "content": "Dan did not finish The Cauldron: The Making of the Modern Middle East by Simon Sebag Montefiore"
+       }
+      }
+     ]
+    },
+    "Read": {
+     "relation": [
+      {
+       "id": "3fb1b15c8b7781a88108f08a85d9f5cf"
+      }
+     ]
+    }
    }
   }
- },
- {
-  "op": "create",
-  "ds": "ced88101-f6c5-4e4e-9c1f-8305afeb2e7e",
-  "props": {
-   "Name": {
-    "title": [
-     {
-      "text": {
-       "content": "Fundamentals of Software Architecture · Started · 2026-10-15"
-      }
-     }
-    ]
-   },
-   "Book": {
-    "relation": [
-     {
-      "id": "3fb1b15c8b778146be94d0104292e0d4"
-     }
-    ]
-   },
-   "When": {
-    "date": {
-     "start": "2026-10-15T07:00:00-07:00"
-    }
-   },
-   "Kind": {
-    "select": {
-     "name": "Started"
-    }
-   },
-   "Source": {
-    "select": {
-     "name": "Goodreads"
-    }
-   },
-   "Goodreads id": {
-    "rich_text": [
-     {
-      "text": {
-       "content": "ReadStatus11503764988"
-      }
-     }
-    ]
-   },
-   "Raw": {
-    "rich_text": [
-     {
-      "text": {
-       "content": "Dan started reading Fundamentals of Software Architecture: A Modern Engineering Approach by Mark Richards"
-      }
-     }
-    ]
-   },
-   "Read": {
-    "relation": [
-     {
-      "id": "3fb1b15c8b7781aab16bc0334e65f692"
-     }
-    ]
-   }
-  }
- },
- {
-  "op": "create",
-  "ds": "ced88101-f6c5-4e4e-9c1f-8305afeb2e7e",
-  "props": {
-   "Name": {
-    "title": [
-     {
-      "text": {
-       "content": "Fundamentals of Software Architecture · Progress p.63 · 2026-10-16"
-      }
-     }
-    ]
-   },
-   "Book": {
-    "relation": [
-     {
-      "id": "3fb1b15c8b778146be94d0104292e0d4"
-     }
-    ]
-   },
-   "When": {
-    "date": {
-     "start": "2026-10-16T13:30:18-07:00"
-    }
-   },
-   "Kind": {
-    "select": {
-     "name": "Progress"
-    }
-   },
-   "Source": {
-    "select": {
-     "name": "Goodreads"
-    }
-   },
-   "Goodreads id": {
-    "rich_text": [
-     {
-      "text": {
-       "content": "UserStatus1350810215"
-      }
-     }
-    ]
-   },
-   "Raw": {
-    "rich_text": [
-     {
-      "text": {
-       "content": "Dan is on page 63 of 869 of Fundamentals of Software Architecture ."
-      }
-     }
-    ]
-   },
-   "Read": {
-    "relation": [
-     {
-      "id": "3fb1b15c8b7781aab16bc0334e65f692"
-     }
-    ]
-   },
-   "Page": {
-    "number": 63
-   },
-   "Of pages": {
-    "number": 869
-   },
-   "Percent": {
-    "number": 7.2
-   }
-  }
- },
- {
-  "op": "create",
-  "ds": "ced88101-f6c5-4e4e-9c1f-8305afeb2e7e",
-  "props": {
-   "Name": {
-    "title": [
-     {
-      "text": {
-       "content": "The Cauldron: The Making of the Modern Middle East · DNF · 2026-10-16"
-      }
-     }
-    ]
-   },
-   "Book": {
-    "relation": [
-     {
-      "id": "3fb1b15c8b7781709f4ede5b054ae912"
-     }
-    ]
-   },
-   "When": {
-    "date": {
-     "start": "2026-10-16T19:18:50-07:00"
-    }
-   },
-   "Kind": {
-    "select": {
-     "name": "DNF"
-    }
-   },
-   "Source": {
-    "select": {
-     "name": "Goodreads"
-    }
-   },
-   "Goodreads id": {
-    "rich_text": [
-     {
-      "text": {
-       "content": "ReadStatus11507032651"
-      }
-     }
-    ]
-   },
-   "Raw": {
-    "rich_text": [
-     {
-      "text": {
-       "content": "Dan did not finish The Cauldron: The Making of the Modern Middle East by Simon Sebag Montefiore"
-      }
-     }
-    ]
-   },
-   "Read": {
-    "relation": [
-     {
-      "id": "3fb1b15c8b7781a88108f08a85d9f5cf"
-     }
-    ]
-   }
-  }
- }
-]
+ ],
+ "questions": [
+  [
+   "No open Read",
+   "event:Shelf7521001057:started:2026-10-09"
+  ]
+ ]
+}

@@ -10,3 +10,4 @@ backfill/applied.json
 backfill/reviews.json
 backfill/chat/
 backfill/*.zip
+feed_archive/

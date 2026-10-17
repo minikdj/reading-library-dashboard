@@ -44,7 +44,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 import xml.etree.ElementTree as ET
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from email.utils import parsedate_to_datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -129,15 +129,73 @@ def now_iso():
     return datetime.now(timezone.utc).astimezone(tz()).isoformat(timespec='seconds')
 
 
+def to_dt(iso, end_of_day=False):
+    """An ISO timestamp or date as an aware datetime (dates are midnight, or 23:59:59, in Dan's zone)."""
+    if not iso:
+        return None
+    if len(iso) == 10:
+        d = datetime.fromisoformat(iso).replace(tzinfo=tz())
+        return d.replace(hour=23, minute=59, second=59) if end_of_day else d
+    dt = datetime.fromisoformat(iso.replace('Z', '+00:00'))
+    return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+
+
+def rfc_iso(s):
+    """An RSS date ('Fri, 09 Oct 2026 19:04:19 -0700') as ISO with its offset; None when blank or unparsable."""
+    try:
+        return parsedate_to_datetime(s).isoformat() if s else None
+    except Exception:
+        return None
+
+
+def rfc_date(s):
+    """A Goodreads date field ('Thu, 15 Oct 2026 00:00:00 +0000' is a date, not a time) as YYYY-MM-DD."""
+    try:
+        return parsedate_to_datetime(s).date().isoformat() if s else None
+    except Exception:
+        return None
+
+
+def days_between(a, b):
+    return abs((datetime.fromisoformat(a[:10]) - datetime.fromisoformat(b[:10])).days)
+
+
 # ---------------------------------------------------------------- Goodreads feeds
 def feed_urls():
     uid = cfg('GOODREADS_USER_ID', required=True)
     key = os.environ.get('GOODREADS_RSS_KEY', '')
     q = ('&key=' + urllib.parse.quote(key)) if key else ''
-    return {
-        'updates': f'https://www.goodreads.com/user/updates_rss/{uid}?{q.lstrip("&")}'.rstrip('?'),
-        'reading': f'https://www.goodreads.com/review/list_rss/{uid}?shelf=currently-reading{q}',
-    }
+    urls = {'updates': f'https://www.goodreads.com/user/updates_rss/{uid}?{q.lstrip("&")}'.rstrip('?')}
+    for shelf in SHELVES:
+        urls[shelf] = f'https://www.goodreads.com/review/list_rss/{uid}?shelf={shelf}&per_page=200&page=1{q}'
+    return urls
+
+
+SHELVES = ('currently-reading', 'read', 'did-not-finish')
+FENCE_MARGIN_HOURS = 48
+ARCHIVE_DIR = HERE / 'feed_archive'
+
+
+def archive_items(archive_dir, items, today):
+    """Append the raw feed items to <archive_dir>/<today>.jsonl, once per guid across the whole archive."""
+    archive_dir = Path(archive_dir)
+    archive_dir.mkdir(parents=True, exist_ok=True)
+    seen = set()
+    for f in archive_dir.glob('*.jsonl'):
+        for line in f.read_text(encoding='utf-8').splitlines():
+            try:
+                seen.add(json.loads(line).get('guid'))
+            except ValueError:
+                pass
+    n = 0
+    with archive_dir.joinpath(f'{today}.jsonl').open('a', encoding='utf-8') as out:
+        for it in items:
+            if it['guid'] in seen:
+                continue
+            seen.add(it['guid'])
+            out.write(json.dumps({**it, 'archived': today}, ensure_ascii=False) + '\n')
+            n += 1
+    return n
 
 
 def fetch(url, timeout=30):
@@ -512,19 +570,23 @@ class Store:
             return False
         return bool(self.notion.query_all(cfg('NOTION_LOG_DS'), {'property': 'Goodreads id', 'rich_text': {'equals': guid}}, page_size=1))
 
-    def log_exists(self, read_id, kind_name, date, page):
-        """The secondary dedupe key: a row on the same Read with the same Kind, local date and Page."""
+    def log_rows(self, read_id, kind_name):
+        """Rows already in the Reading log for this Read and Kind (Notion plus this run), as (date, page) keys."""
+        keys = {(k[2], k[3]) for k in self.seen_keys if k[0] == read_id and k[1] == kind_name}
+        if self.notion:
+            for r in self.notion.query_all(cfg('NOTION_LOG_DS'), {'and': [
+                    {'property': 'Read', 'relation': {'contains': read_id}}, {'property': 'Kind', 'select': {'equals': kind_name}}]}):
+                p = r['properties']
+                keys.add((local_date(prop_date(p.get('When'))), prop_number(p.get('Page'))))
+        return keys
+
+    def log_exists(self, read_id, kind_name, date, page, any_date=False):
+        """The secondary dedupe key: a row on the same Read with the same Kind, local date and Page
+        (or, with any_date, any row of that Kind on the Read)."""
         if log_key(read_id, kind_name, date, page) in self.seen_keys:
             return True
-        if not self.notion:
-            return False
-        rows = self.notion.query_all(cfg('NOTION_LOG_DS'), {'and': [
-            {'property': 'Read', 'relation': {'contains': read_id}}, {'property': 'Kind', 'select': {'equals': kind_name}}]})
-        for r in rows:
-            p = r['properties']
-            if local_date(prop_date(p.get('When'))) == date and prop_number(p.get('Page')) == page:
-                return True
-        return False
+        rows = self.log_rows(read_id, kind_name)
+        return bool(rows) if any_date else (date, page) in rows
 
     def create_log(self, ev, book, read):
         props = log_props(ev, book, read)
@@ -583,31 +645,9 @@ def log_props(ev, book, read):
     return props
 
 
-def check_reading(shelf_items, lib, store):
-    """Goodreads' currently-reading shelf against Notion's open Reads, both ways."""
-    out = []
-    seen_books = set()
-    for it in shelf_items:
-        book, why = lib.match(it['title'], it['author_name'])
-        shelved = it['user_date_added'][:16] if it['user_date_added'] else None
-        if not book:
-            out.append({'what': 'Goodreads: currently reading, but no matching Book in Notion', 'title': it['title'], 'author': it['author_name'], 'shelved': shelved, 'reason': why})
-            continue
-        seen_books.add(book['id'])
-        rd = store.open_read(book['id'])
-        if not rd:
-            last = store.recent_read(book['id'])
-            out.append({'what': 'Goodreads: currently reading, but no open Read in Notion', 'title': book['title'], 'shelved': shelved,
-                        'last_read_in_notion': (last['title'] + ' (' + (last['outcome'] or 'open') + (', ended ' + last['ended'] if last['ended'] else '') + ')') if last else None})
-    for rd in store.all_open():
-        if rd.get('book') not in seen_books:
-            out.append({'what': 'Notion: open Read, but not on the Goodreads currently-reading shelf', 'title': rd['title'], 'started': rd['started']})
-    return out
-
-
 # ---------------------------------------------------------------- the Sync queue
 QUEUE_KINDS = ['Edition', 'Pages read', 'Reread or reopen', 'Edition change', 'Finish date', 'Unmatched book', 'No open Read',
-               'Book created', 'Wishlist removed', 'Gap', 'Sync run']
+               'Still reading', 'Book created', 'Wishlist removed', 'Gap', 'Sync run']
 QUEUE_STATUSES = ['Open', 'Answered', 'Dismissed', 'Done']
 DROP_ANSWERS = {'drop', 'skip', 'ignore', 'dismiss', 'no'}
 
@@ -676,11 +716,19 @@ class SyncQueue:
             self._open = [queue_norm(r) for r in self.store.notion.query_all(self.ds, {'property': 'Status', 'select': {'equals': 'Open'}})]
         return self._open
 
-    def ask(self, kind, question, key, *, book=None, read=None, options='', proposed='', default_applied=False, event=None, guid=''):
+    def recently_asked(self, key, days):
+        if not self.enabled:
+            return False
+        rows = [queue_norm(r) for r in self.store.notion.query_all(self.ds, {'property': 'Key', 'rich_text': {'equals': key}})]
+        return any(r['asked'] and days_between(r['asked'], self.store.today) <= days for r in rows)
+
+    def ask(self, kind, question, key, *, book=None, read=None, options='', proposed='', default_applied=False, event=None, guid='', reask_days=None):
         q = {'kind': kind, 'question': question, 'key': key, 'book': book, 'read': read, 'options': options, 'proposed': proposed,
              'default_applied': default_applied, 'event': event, 'guid': guid or (event or {}).get('guid') or '', 'asked': self.store.now}
         if any(r['key'] == key for r in self.open_rows()) or any(a['key'] == key for a in self.asked):
             return None  # still open from an earlier run (or already asked this run)
+        if reask_days and self.recently_asked(key, reask_days):
+            return None  # answered recently; ask again only after the interval
         self.asked.append(q)
         log('QUESTION', kind, '-', question)
         if not self.enabled:
@@ -784,28 +832,47 @@ class Run:
                 return {'status': 'unmatched', 'why': why}
         if ev['gr_book_id']:
             self.state['book_cache'][ev['gr_book_id']] = book['id']
+        day = local_date(ev['at'])
         if not read:
-            read = self.store.open_read(book['id']) or (self.store.recent_read(book['id']) if ev['kind'] in ('finished', 'dnf') else None)
+            read = self.store.open_read(book['id'])
+        if not read and ev['kind'] in ('finished', 'dnf'):
+            recent = self.store.recent_read(book['id'])
+            if recent and recent['outcome'] and recent['ended'] and day:
+                if days_between(recent['ended'], day) <= 2:
+                    read = recent  # Dan's own entry; the event attaches quietly
+                else:
+                    log('FINISH DATE DIFFERS', book['title'], day, 'vs', recent['title'], recent['ended'])
+                    return {'status': 'finish_mismatch', 'book': book, 'read': recent, 'why': f"Notion's {recent['title']} ended {recent['ended']}, Goodreads says {day}"}
         if not read:
             log('NO OPEN READ', ev['kind'], book['title'])
             return {'status': 'no_read', 'book': book, 'why': f"no open Read in Notion for {book['title']}"}
-        day = local_date(ev['at'])
         if self.store.already_logged(ev['guid']):
             status = 'already'
             log('already in the log', ev['guid'])
         elif self.store.log_exists(read['id'], KIND_NAME[ev['kind']], day, ev.get('page')):
             status = 'already'
             log('already in the log (same Read, Kind, date and Page)', ev['guid'])
+        elif ev.get('estimated') and self.store.log_exists(read['id'], KIND_NAME[ev['kind']], day, None, any_date=True):
+            status = 'already'  # a shelf date only recovers a start the feed never gave; the Read already has one
+            log('already in the log (a Started row exists; the shelf date is only a guess)', ev['guid'])
         else:
             self.store.create_log(ev, book, read)
             status = 'logged'
             log('logged', ev['kind'], book['title'], ev.get('page') or ev.get('percent') or '', '->', read['title'])
-        if ev['kind'] == 'started' and day and (not read.get('started') or read.get('dates_estimated')):
+        if ev['kind'] == 'started' and day:
             old = read.get('started')
-            self.store.update_read(read, {'Started': {'date': {'start': day}}, 'Dates estimated': {'checkbox': False}},
-                                   f'Started {day}' + (f' (was estimated {old})' if old else ''))
-            read['started'], read['dates_estimated'] = day, False
-            log(f"replaced estimated Started {old} with {day} on {read['title']}" if old else f"set Started {day} on {read['title']}")
+            if ev.get('estimated'):
+                # a shelf date is when the book was shelved, not when the reading began: fill a blank only, keep the guess flagged
+                if not old:
+                    self.store.update_read(read, {'Started': {'date': {'start': day}}, 'Dates estimated': {'checkbox': True}},
+                                           f'Started {day} (estimated, from the currently-reading shelf)')
+                    read['started'], read['dates_estimated'] = day, True
+                    log(f"set estimated Started {day} on {read['title']} from the shelf")
+            elif not old or read.get('dates_estimated'):
+                self.store.update_read(read, {'Started': {'date': {'start': day}}, 'Dates estimated': {'checkbox': False}},
+                                       f'Started {day}' + (f' (was estimated {old})' if old else ''))
+                read['started'], read['dates_estimated'] = day, False
+                log(f"replaced estimated Started {old} with {day} on {read['title']}" if old else f"set Started {day} on {read['title']}")
         return {'status': status, 'book': book, 'read': read}
 
     def count(self, res):
@@ -825,11 +892,21 @@ class Run:
             self.unmatched.append({**ev, 'reason': res['why']})
             return self.queue.ask('Unmatched book', f'Which Book is \u201c{ev["title"]}\u201d{who}? Goodreads {kind_name} on {day}: {res["why"]}',
                                   'event:' + ev['guid'], options=options, event=ev)
+        if res['status'] == 'finish_mismatch':
+            book, read = res['book'], res['read']
+            self.unmatched.append({**ev, 'reason': res['why'], 'book_id': book['id']})
+            return self.queue.ask('Finish date', f'Goodreads says {kind_name} \u201c{book["title"]}\u201d on {day}; Notion\u2019s {read["title"]} ended {read["ended"]}',
+                                  'event:' + ev['guid'], book=book['id'], read=read['id'], default_applied=True,
+                                  proposed=f"left as is: Ended {read['ended']} kept, the Goodreads {kind_name} not logged",
+                                  options="Answer 'attach' to log it to that Read anyway, a Read title, or 'drop'", event=ev)
         if res['status'] == 'no_read':
             book = res['book']
             last = self.store.recent_read(book['id'])
             proposed = (f"last Read in Notion: {last['title']} ({last['outcome'] or 'open'}" + (f", ended {last['ended']}" if last['ended'] else '') + ')') if last else 'no Read of this Book in Notion'
             self.unmatched.append({**ev, 'reason': res['why'], 'book_id': book['id']})
+            if ev['kind'] in ('finished', 'dnf'):
+                return self.queue.ask('Finish date', f'Goodreads {kind_name} \u201c{book["title"]}\u201d on {day}, but Notion has no Read of it to close',
+                                      'event:' + ev['guid'], book=book['id'], options="Answer with the Read to attach it to (its title), or 'drop'", proposed=proposed, event=ev)
             return self.queue.ask('No open Read', f'Goodreads {kind_name} on \u201c{book["title"]}\u201d {day}, but Notion has no open Read',
                                   'event:' + ev['guid'], book=book['id'], options="Answer with the Read to attach it to (its title), or 'drop'", proposed=proposed, event=ev)
         return None
@@ -844,7 +921,7 @@ class Run:
             if answer.lower() in DROP_ANSWERS:
                 self.queue.resolve(row, 'Dismissed')
                 continue
-            if row['kind'] in ('Unmatched book', 'No open Read') and row['event']:
+            if row['kind'] in ('Unmatched book', 'No open Read', 'Finish date') and row['event']:
                 if not answer:
                     self.queue.resolve(row, 'Answered', answer='confirmed: event left unlogged')
                     continue
@@ -856,7 +933,10 @@ class Run:
                         continue
                 else:
                     book = self.books_by_id.get(row['book'])
-                    read = self.read_from_answer(answer, row['book'])
+                    if answer.lower() == 'attach' and row['read']:
+                        read = next((r for r in self.store.reads_for_book(row['book']) if r['id'] == row['read']), None)
+                    else:
+                        read = self.read_from_answer(answer, row['book'])
                     if not book or not read:
                         self.queue.note(row, f'could not apply \u201c{answer}\u201d: no Read of that title on the Book')
                         continue
@@ -872,7 +952,7 @@ class Run:
     def retry_pending(self):
         """Events that could not be written on an earlier run are tried again; the fix (a Read, a Book) usually came by chat."""
         for row in list(self.queue.open_rows()):
-            if row['kind'] not in ('Unmatched book', 'No open Read') or not row['event'] or row['status'] != 'Open':
+            if row['kind'] not in ('Unmatched book', 'No open Read', 'Finish date') or not row['event'] or row['status'] != 'Open':
                 continue
             res = self.handle(row['event'])
             self.count(res)
@@ -883,16 +963,72 @@ class Run:
         for ev in sorted(events, key=lambda e: e['at'] or ''):
             res = self.handle(ev)
             self.count(res)
-            if res['status'] in ('unmatched', 'no_read'):
+            if res['status'] in ('unmatched', 'no_read', 'finish_mismatch'):
                 self.question_for(ev, res)
 
+    # ---- shelves (state), consulted only inside the fence
+    def shelf_events(self, shelf, items, watermark, open_books):
+        """Shelf items as events the feed may have aged out. The currently-reading shelf is always inside the fence
+        (it describes now, not history); read and did-not-finish items only when dated after the watermark or when
+        their Book has an open Read in Notion. Without a watermark (first run) the fence is 48 hours."""
+        out, fenced_out = [], 0
+        fence = to_dt(watermark) if watermark else to_dt(self.store.now) - timedelta(hours=FENCE_MARGIN_HOURS)
+        for it in items:
+            added, read_at = rfc_iso(it['user_date_added']), rfc_date(it['user_read_at'])
+            book, _ = self.lib.match(it['title'], it['author_name'])
+            times = [to_dt(added)] + ([to_dt(read_at, end_of_day=True)] if read_at else [])
+            latest = max(x for x in times if x) if any(times) else None
+            inside = shelf == 'currently-reading' or (latest is not None and latest > fence) or (book is not None and book['id'] in open_books)
+            if not inside:
+                fenced_out += 1
+                continue
+            m = re.search(r'/review/show/(\d+)', it['guid'] or it['link'] or '')
+            review = m.group(1) if m else (it['book_id'] or 'x')
+            if shelf == 'currently-reading':
+                kind, day = 'started', local_date(added)
+            elif shelf == 'read':
+                kind, day = 'finished', read_at or local_date(added)
+            else:
+                kind, day = 'dnf', read_at or local_date(added)
+            if not day:
+                continue
+            ev = {'kind': kind, 'title': it['title'], 'author': it['author_name'] or None, 'gr_book_id': it['book_id'] or None,
+                  'guid': f'Shelf{review}:{kind}:{day}', 'at': day, 'raw': f'{shelf} shelf: {it["title"]}, added {it["user_date_added"]}' + (f', read at {read_at}' if read_at else ''),
+                  'note': None, 'review_url': it['link'] if '/review/show/' in (it['link'] or '') else None, 'source': 'shelf'}
+            if kind == 'started':
+                ev['estimated'] = True
+            if it.get('num_pages', '').isdigit():
+                ev['total'] = int(it['num_pages'])
+            out.append(ev)
+        return out, fenced_out
 
-def run_sync(notion, items, shelf, state, *, dry_run=False, offline_lib=None, now=None):
-    """Match and write one batch of feed items. `notion` is a Notion (or a test double); None with
-    `offline_lib` for an offline plan. Returns the report; the writes are in report['plan']."""
+    def still_reading(self, items):
+        """Open Reads in Notion whose Book is not on the currently-reading shelf: still reading, or finished?"""
+        on_shelf = set()
+        for it in items:
+            book, _ = self.lib.match(it['title'], it['author_name'])
+            if book:
+                on_shelf.add(book['id'])
+        for rd in self.store.all_open():
+            if rd.get('book') in on_shelf or not rd.get('started') or days_between(rd['started'], self.store.today) <= 2:
+                continue
+            self.queue.ask('Still reading', f'Notion has \u201c{rd["title"]}\u201d open since {rd["started"]}, but it is not on the Goodreads currently-reading shelf: still reading, or did you finish?',
+                           f'still:{rd["id"]}', book=rd.get('book'), read=rd['id'], default_applied=True, proposed='left open',
+                           options="Answer 'still' to keep it open, or 'finished YYYY-MM-DD [pages N]' / 'dnf YYYY-MM-DD [pages N]' to close it", reask_days=14)
+
+
+def feed_window(items):
+    times = sorted(x for x in (rfc_iso(it['pubDate']) for it in items) if x)
+    return {'oldest': times[0] if times else None, 'newest': times[-1] if times else None, 'n': len(items)}
+
+
+def run_sync(notion, items, shelves, state, *, dry_run=False, offline_lib=None, now=None, since=None):
+    """Match and write one batch of feed items and fenced shelf items. `notion` is a Notion (or a test
+    double); None with `offline_lib` for an offline plan. `shelves` maps shelf name -> items (only the
+    shelves fetched). Returns the report; the writes are in report['plan']."""
     now = now or now_iso()
     events = [e for e in (parse_update(it) for it in items) if e]
-    log(f'feed: {len(items)} items, {len(events)} tracked events; currently-reading shelf: {len(shelf)}')
+    log(f'feed: {len(items)} items, {len(events)} tracked events; shelves: ' + ', '.join(f'{k} {len(v)}' for k, v in shelves.items()))
     lib = offline_lib or Library(notion)
     if not offline_lib:
         lib.load()
@@ -900,19 +1036,47 @@ def run_sync(notion, items, shelf, state, *, dry_run=False, offline_lib=None, no
     store.now = now
     queue = SyncQueue(store)
     run = Run(store, lib, queue, state)
+    # the fence: only what happened after the last successful run (less a margin) is an event
+    last = queue.last_run()
+    if since:
+        watermark = to_dt(since).isoformat()
+    elif last and last['asked']:
+        watermark = (to_dt(last['asked']) - timedelta(hours=FENCE_MARGIN_HOURS)).isoformat()
+    else:
+        watermark = None
+    log(f'watermark: {watermark or "none (first run: whole feed)"}' + (f' (last run {last["asked"]})' if last else ''))
+    window = feed_window(items)
+    last_window = ((last or {}).get('event') or {}).get('window') or {}
+    if window['oldest'] and last_window.get('newest') and to_dt(window['oldest']) > to_dt(last_window['newest']):
+        queue.ask('Gap', f'Page updates between {local_date(last_window["newest"])} {last_window["newest"][11:16]} and {local_date(window["oldest"])} {window["oldest"][11:16]} may be missing: '
+                         'the updates feed had already dropped them', 'gap:' + last_window['newest'], default_applied=True,
+                  proposed='noted; fill by hand from the Goodreads review pages if it matters (docs/GAP_FILL.md)', options="Tick Confirm once filled or if it doesn't matter")
+    fenced_out = 0
+    if watermark:
+        kept = [e for e in events if e['at'] and to_dt(e['at']) > to_dt(watermark)]
+        fenced_out = len(events) - len(kept)
+        events = kept
     run.apply_answers()
     run.retry_pending()
     run.feed(events)
     if not events:
         log('no new events')
-    checks = check_reading(shelf, lib, store)
-    for c in checks:
-        log('CHECK', json.dumps(c, ensure_ascii=False))
-    summary = {'at': now, 'items': len(items), 'new': len(events), 'written': run.written, 'already': run.already,
-               'unmatched': len(run.unmatched), 'asked': len(queue.asked), 'checks': len(checks)}
+    open_books = {r.get('book') for r in store.all_open()} if shelves else set()
+    for shelf in SHELVES:
+        if shelf not in shelves:
+            continue
+        shelf_evs, out = run.shelf_events(shelf, shelves[shelf], watermark, open_books)
+        fenced_out += out
+        log(f'{shelf} shelf: {len(shelf_evs)} item(s) inside the fence, {out} outside')
+        run.feed(shelf_evs)
+    if 'currently-reading' in shelves:
+        run.still_reading(shelves['currently-reading'])
+    summary = {'at': now, 'items': len(items), 'new': len(events), 'fenced_out': fenced_out, 'written': run.written, 'already': run.already,
+               'unmatched': len(run.unmatched), 'asked': len(queue.asked), 'window': window, 'watermark': watermark,
+               'shelves': {k: len(v) for k, v in shelves.items()}}
     queue.record_run(summary)
     open_questions = [q for q in queue.open_rows(refresh=True) if q['status'] == 'Open'] if (queue.enabled and not dry_run) else list(queue.open_rows())
-    return {**summary, 'unmatched': run.unmatched, 'checks': checks, 'questions': queue.asked, 'open_questions': open_questions, 'plan': store.plan}
+    return {**summary, 'unmatched': run.unmatched, 'questions': queue.asked, 'open_questions': open_questions, 'plan': store.plan}
 
 
 def run(args):
@@ -925,12 +1089,22 @@ def run(args):
         print('Add that line to sync/.env and to the workflow env (and as the default in goodreads_sync.py).')
         return 0
     state = load_state()
-    urls = feed_urls() if not (args.fixture and args.shelf_fixture) else {}
+    fixtures = {'currently-reading': args.shelf_fixture, 'read': args.read_fixture, 'did-not-finish': args.dnf_fixture}
+    urls = feed_urls() if not (args.fixture and all(fixtures.values())) else {}
+    shelves = {}
     try:
         items = rss_items(Path(args.fixture).read_bytes() if args.fixture else fetch(urls['updates']))
-        shelf = rss_items(Path(args.shelf_fixture).read_bytes() if args.shelf_fixture else fetch(urls['reading'])) if not args.parse_only else []
+        if not args.parse_only:
+            for shelf in SHELVES:
+                if fixtures[shelf]:
+                    shelves[shelf] = rss_items(Path(fixtures[shelf]).read_bytes())
+                elif not args.fixture or args.fetch_shelves:
+                    shelves[shelf] = rss_items(fetch(urls[shelf]))
     except Exception as e:
         sys.exit(f'could not fetch Goodreads: {e}')
+    if not args.fixture and not args.no_archive:
+        n = archive_items(ARCHIVE_DIR, items, local_date(now_iso()))
+        log(f'feed archive: {n} new item(s) in {ARCHIVE_DIR.name}/')
     if args.parse_only:
         for e in (parse_update(it) for it in items):
             if e:
@@ -944,23 +1118,23 @@ def run(args):
     if offline:
         lib = Library(None)
         lib.load_raw(args.offline_library)
-    report = run_sync(notion, items, shelf, state, dry_run=args.dry_run, offline_lib=lib)
+    report = run_sync(notion, items, shelves, state, dry_run=args.dry_run, offline_lib=lib, since=args.since)
     if args.plan:
         Path(args.plan).write_text(json.dumps(report['plan'], indent=1, ensure_ascii=False) + '\n', encoding='utf-8')
         log(f"{len(report['plan'])} planned write(s) saved to {args.plan}")
     view = {'at': report['at'], 'open_questions': [{k: v for k, v in q.items() if k != 'event'} for q in report['open_questions']],
             'asked_this_run': [{k: v for k, v in q.items() if k != 'event'} for q in report['questions']],
-            'unmatched_events': report['unmatched'], 'reading_check': report['checks']}
-    if view['open_questions'] or view['asked_this_run'] or report['unmatched'] or report['checks']:
+            'unmatched_events': report['unmatched']}
+    if view['open_questions'] or view['asked_this_run'] or report['unmatched']:
         UNMATCHED_FILE.write_text(json.dumps(view, indent=1, ensure_ascii=False), encoding='utf-8')
-        log(f"{len(view['open_questions'])} open question(s), {len(report['unmatched'])} unmatched event(s), {len(report['checks'])} reading-check item(s) written to {UNMATCHED_FILE.name}")
+        log(f"{len(view['open_questions'])} open question(s), {len(report['unmatched'])} unmatched event(s) written to {UNMATCHED_FILE.name}")
     elif UNMATCHED_FILE.exists():
         UNMATCHED_FILE.unlink()
     if not args.dry_run and not offline:
-        state['runs'] = (state.get('runs') or [])[-30:] + [{k: report[k] for k in ('at', 'new', 'written', 'asked', 'checks')} | {'unmatched': len(report['unmatched'])}]
+        state['runs'] = (state.get('runs') or [])[-30:] + [{k: report[k] for k in ('at', 'new', 'written', 'asked', 'fenced_out')} | {'unmatched': len(report['unmatched'])}]
         save_state(state)
     log(f"done: {report['written']} logged, {report['already']} already there, {len(report['unmatched'])} unmatched, {len(report['questions'])} question(s) asked, "
-        f"{len(report['open_questions'])} open, {len(report['checks'])} check item(s)" + (' (dry run, nothing saved)' if args.dry_run or offline else ''))
+        f"{len(report['open_questions'])} open, {report['fenced_out']} outside the fence" + (' (dry run, nothing saved)' if args.dry_run or offline else ''))
     return 0
 
 
@@ -970,6 +1144,11 @@ def parse_args(argv=None):
     ap.add_argument('--fixture', help='parse this saved RSS file instead of fetching')
     ap.add_argument('--parse-only', action='store_true', help='print parsed events and stop; no Notion')
     ap.add_argument('--shelf-fixture', help='parse this saved currently-reading shelf RSS instead of fetching')
+    ap.add_argument('--read-fixture', help='parse this saved read shelf RSS instead of fetching')
+    ap.add_argument('--dnf-fixture', help='parse this saved did-not-finish shelf RSS instead of fetching')
+    ap.add_argument('--fetch-shelves', action='store_true', help='with --fixture: still fetch the shelves that have no fixture')
+    ap.add_argument('--since', metavar='ISO', help='override the watermark: take events and shelf items after this date/time')
+    ap.add_argument('--no-archive', action='store_true', help='do not append the fetched feed to sync/feed_archive/')
     ap.add_argument('--offline-library', metavar='DIR', help='match against data/raw/*.json instead of Notion; implies dry run')
     ap.add_argument('--plan', metavar='FILE', help='save the planned writes as JSON (any mode)')
     ap.add_argument('--init-queue', action='store_true', help='create the Sync queue database under the Library page and print its id')

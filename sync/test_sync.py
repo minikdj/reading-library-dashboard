@@ -215,9 +215,10 @@ class Workspace:
         out = [gs.queue_norm(r) for r in rows]
         return [r for r in out if all(r.get(k) == v for k, v in flt.items())]
 
-    def sync(self, items, shelf=(), state=None, now='2026-10-17T09:00:00-04:00', **kw):
+    def sync(self, items, shelf=None, state=None, now='2026-10-17T09:00:00-04:00', read_shelf=None, dnf_shelf=None, **kw):
         state = state if state is not None else {'book_cache': {}, 'runs': []}
-        return gs.run_sync(self.n, list(items), list(shelf), state, now=now, **kw), state
+        shelves = {k: list(v) for k, v in (('currently-reading', shelf), ('read', read_shelf), ('did-not-finish', dnf_shelf)) if v is not None}
+        return gs.run_sync(self.n, list(items), shelves, state, now=now, **kw), state
 
 
 PAGE_ITEM = rss_item('UserStatus1', 'Thu, 15 Oct 2026 21:12:03 -0400', 'Dan is on page 120 of 400 of The Brothers Karamazov',
@@ -476,31 +477,223 @@ class CacheTests(unittest.TestCase):
         self.assertEqual(len(ws.n.creates(LOG_DS)), 1)
 
 
-class ReadingCheckTests(unittest.TestCase):
-    def shelf(self, t, author, added='Fri, 09 Oct 2026 19:04:19 -0700', book_id='1'):
-        it = rss_item('https://www.goodreads.com/review/show/1', added, t, '')
-        it.update({'author_name': author, 'user_date_added': added, 'book_id': book_id})
-        return it
+def shelf_item(t, author, added='Fri, 09 Oct 2026 19:04:19 -0700', read_at='', book_id='1', review='5001', pages='300'):
+    it = rss_item(f'https://www.goodreads.com/review/show/{review}?utm_medium=api', added, t, '', link=f'https://www.goodreads.com/review/show/{review}')
+    it.update({'author_name': author, 'user_date_added': added, 'user_read_at': read_at, 'book_id': book_id, 'num_pages': pages})
+    return it
 
-    def test_notion_side_of_the_check_is_live(self):
+
+def sync_run_row(ws, asked, newest=None, oldest=None):
+    return ws.question('Sync run', f'Sync run {asked}', 'run:' + asked, status='Done', asked=asked,
+                       event={'at': asked, 'window': {'oldest': oldest, 'newest': newest, 'n': 9}})
+
+
+class ReadingShelfTests(unittest.TestCase):
+    """The currently-reading shelf, inside the fence."""
+
+    def test_open_read_not_on_the_shelf_is_questioned(self):
         ws = Workspace()
         b1, b2 = ws.book('Lonesome Dove', 'Larry McMurtry'), ws.book('Middlemarch', 'George Eliot')
         ws.read('Lonesome Dove · 2026', b1, started='2026-10-04')
-        ws.read('Middlemarch · 2026', b2, started='2026-10-01')
-        report, _ = ws.sync([], shelf=[self.shelf('Lonesome Dove', 'Larry McMurtry')])
-        whats = [(c['what'], c['title']) for c in report['checks']]
-        self.assertIn(('Notion: open Read, but not on the Goodreads currently-reading shelf', 'Middlemarch · 2026'), whats)
-        self.assertEqual(len(whats), 1)
+        r2 = ws.read('Middlemarch · 2026', b2, started='2026-10-01')
+        report, _ = ws.sync([], shelf=[shelf_item('Lonesome Dove', 'Larry McMurtry', book_id='56346987')])
+        qs = [(q['kind'], q['read']) for q in report['questions']]
+        self.assertEqual(qs, [('Still reading', r2)])
+        self.assertIn('Middlemarch · 2026', report['questions'][0]['question'])
 
-    def test_goodreads_side_of_the_check(self):
+    def test_read_opened_in_the_last_two_days_is_not_questioned(self):
+        ws = Workspace()
+        b2 = ws.book('Middlemarch', 'George Eliot')
+        ws.read('Middlemarch · 2026', b2, started='2026-10-16')
+        report, _ = ws.sync([], shelf=[])
+        self.assertEqual(report['questions'], [])
+
+    def test_shelf_item_with_no_open_read_is_questioned(self):
         ws = Workspace()
         b1 = ws.book('Lonesome Dove', 'Larry McMurtry')
         ws.read('Lonesome Dove · 2026', b1, started='2026-06-01', ended='2026-06-30', outcome='Finished', pages_read=858)
-        report, _ = ws.sync([], shelf=[self.shelf('Lonesome Dove', 'Larry McMurtry')])
-        c = report['checks'][0]
-        self.assertEqual(c['what'], 'Goodreads: currently reading, but no open Read in Notion')
-        self.assertEqual(c['shelved'], 'Fri, 09 Oct 2026')
-        self.assertIn('Finished', c['last_read_in_notion'])
+        report, _ = ws.sync([], shelf=[shelf_item('Lonesome Dove', 'Larry McMurtry', book_id='56346987')])
+        q = report['questions'][0]
+        self.assertEqual((q['kind'], q['book']), ('No open Read', b1))
+        self.assertEqual(q['event']['kind'], 'started')
+        self.assertEqual(q['event']['guid'], 'Shelf5001:started:2026-10-09')
+        self.assertIn('Finished', q['proposed'])
+        self.assertEqual(ws.n.creates(LOG_DS), [])
+
+    def test_shelf_item_with_an_open_read_recovers_a_started_row(self):
+        ws = Workspace()
+        b1 = ws.book('Lonesome Dove', 'Larry McMurtry')
+        r = ws.read('Lonesome Dove · 2026', b1)  # opened by chat, no Started
+        ws.sync([], shelf=[shelf_item('Lonesome Dove', 'Larry McMurtry', book_id='56346987')])
+        rows = ws.n.creates(LOG_DS)
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(_plain(rows[0]['Goodreads id']['rich_text']), 'Shelf5001:started:2026-10-09')
+        self.assertEqual(rows[0]['Kind']['select']['name'], 'Started')
+        up = ws.n.updates(r)[0]  # a shelf date is a guess: Started filled, Dates estimated stays ✓
+        self.assertEqual(up['Started']['date']['start'], '2026-10-09')
+        self.assertTrue(up['Dates estimated']['checkbox'])
+        ws.sync([], shelf=[shelf_item('Lonesome Dove', 'Larry McMurtry', book_id='56346987')])  # night after night: no second row
+        self.assertEqual(len(ws.n.creates(LOG_DS)), 1)
+
+    def test_shelf_start_is_not_logged_when_the_read_already_has_a_started_row(self):
+        ws = Workspace()
+        b1 = ws.book('Lonesome Dove', 'Larry McMurtry')
+        r = ws.read('Lonesome Dove · 2026 (reread)', b1, started='2026-10-04')
+        ws.log('Backfill:LonesomeDove:2026-10-04:started', r, b1, 'Started', '2026-10-04')
+        report, _ = ws.sync([], shelf=[shelf_item('Lonesome Dove', 'Larry McMurtry', book_id='56346987')])  # shelved 2026-10-09, the stray re-shelve
+        self.assertEqual(ws.n.creates(LOG_DS), [])
+        self.assertEqual(ws.n.updates(r), [])
+        self.assertEqual(report['already'], 1)
+
+    def test_shelf_date_never_replaces_a_feed_started(self):
+        ws = Workspace()
+        b1 = ws.book('Lonesome Dove', 'Larry McMurtry')
+        r = ws.read('Lonesome Dove · 2026', b1, started='2026-10-04', estimated=True)
+        ws.sync([], shelf=[shelf_item('Lonesome Dove', 'Larry McMurtry', book_id='56346987')])
+        self.assertEqual(ws.n.updates(r), [])
+
+    def test_unmatched_shelf_item_is_questioned(self):
+        ws = Workspace()
+        report, _ = ws.sync([], shelf=[shelf_item('A Book Notion Lacks', 'Nobody', book_id='7')])
+        self.assertEqual(report['questions'][0]['kind'], 'Unmatched book')
+
+
+class FenceTests(unittest.TestCase):
+    def setUp(self):
+        self.ws = Workspace()
+        self.book = self.ws.book('Fundamentals of Software Architecture', 'Mark Richards')
+        self.read = self.ws.read('Fundamentals of Software Architecture · 2026', self.book, started='2026-10-15')
+
+    def test_first_run_takes_the_whole_feed(self):
+        report, _ = self.ws.sync([LATE_ITEM])
+        self.assertEqual(len(self.ws.n.creates(LOG_DS)), 1)
+        self.assertIsNone(report['watermark'])
+
+    def test_events_before_the_watermark_are_ignored(self):
+        sync_run_row(self.ws, '2026-10-20T23:45:00-04:00')  # watermark = 2026-10-18T23:45 Eastern
+        report, _ = self.ws.sync([LATE_ITEM], now='2026-10-21T23:45:00-04:00')  # LATE_ITEM is 2026-10-16
+        self.assertEqual(self.ws.n.creates(LOG_DS), [])
+        self.assertEqual(report['watermark'], '2026-10-18T23:45:00-04:00')
+        self.assertEqual(report['fenced_out'], 1)
+
+    def test_events_inside_the_48h_margin_are_taken(self):
+        sync_run_row(self.ws, '2026-10-17T23:45:00-04:00')  # watermark = 2026-10-15T23:45 Eastern; LATE_ITEM is 02:30 on the 16th
+        self.ws.sync([LATE_ITEM], now='2026-10-18T23:45:00-04:00')
+        self.assertEqual(len(self.ws.n.creates(LOG_DS)), 1)
+
+    def test_since_overrides_the_watermark(self):
+        sync_run_row(self.ws, '2026-10-20T23:45:00-04:00')
+        self.ws.sync([LATE_ITEM], now='2026-10-21T23:45:00-04:00', since='2026-10-01')
+        self.assertEqual(len(self.ws.n.creates(LOG_DS)), 1)
+
+    def test_run_row_records_window_and_watermark(self):
+        sync_run_row(self.ws, '2026-10-15T23:45:00-04:00', newest='2026-10-15T20:00:00-04:00')
+        self.ws.sync([LATE_ITEM, FINISHED_ITEM], now='2026-10-16T23:45:00-04:00')
+        run = [r for r in self.ws.queue_rows(kind='Sync run') if r['asked'].startswith('2026-10-16')][0]
+        self.assertEqual(run['event']['window'], {'oldest': '2026-10-15T05:29:00-07:00', 'newest': '2026-10-15T23:30:00-07:00', 'n': 2})
+        self.assertEqual(run['event']['watermark'], '2026-10-13T23:45:00-04:00')
+
+
+class ReadShelfTests(unittest.TestCase):
+    """The read and did-not-finish shelves recover a Finished / DNF the feed aged out, inside the fence only."""
+
+    def setUp(self):
+        self.ws = Workspace()
+        self.book = self.ws.book('Release It!', 'Michael T. Nygard')
+        sync_run_row(self.ws, '2026-10-14T23:45:00-04:00')  # watermark = 2026-10-12T23:45 Eastern
+        self.now = '2026-10-16T23:45:00-04:00'
+
+    def item(self, added='Thu, 15 Oct 2026 05:29:00 -0700', read_at='Thu, 15 Oct 2026 00:00:00 +0000', review='8984202464'):
+        return shelf_item('Release It!: Design and Deploy Production-Ready Software', 'Michael T. Nygard', added=added, read_at=read_at, book_id='38733031', review=review)
+
+    def test_item_before_the_watermark_is_never_compared(self):
+        self.ws.read('Release It! · 2023', self.book, started='2023-01-01', ended='2023-02-01', outcome='Finished', pages_read=300)
+        report, _ = self.ws.sync([], read_shelf=[self.item(added='Sat, 03 Oct 2026 05:29:00 -0700', read_at='Sat, 03 Oct 2026 00:00:00 +0000')], now=self.now)
+        self.assertEqual(report['questions'], [])
+        self.assertEqual(self.ws.n.creates(LOG_DS), [])
+
+    def test_item_after_the_watermark_with_no_read_is_questioned(self):
+        report, _ = self.ws.sync([], read_shelf=[self.item()], now=self.now)
+        q = report['questions'][0]
+        self.assertEqual((q['kind'], q['book']), ('Finish date', self.book))
+        self.assertEqual(q['event']['guid'], 'Shelf8984202464:finished:2026-10-15')
+        self.assertEqual(self.ws.n.creates(LOG_DS), [])
+
+    def test_item_whose_book_has_an_open_read_logs_the_finish(self):
+        r = self.ws.read('Release It! · 2026', self.book, started='2026-09-29')
+        self.ws.sync([], read_shelf=[self.item()], now=self.now)
+        rows = self.ws.n.creates(LOG_DS)
+        self.assertEqual(len(rows), 1)
+        self.assertEqual((rows[0]['Kind']['select']['name'], rows[0]['Read']['relation'][0]['id'], rows[0]['When']['date']['start']), ('Finished', r, '2026-10-15'))
+
+    def test_item_agreeing_with_a_closed_read_attaches_quietly(self):
+        r = self.ws.read('Release It! · 2026', self.book, started='2026-09-29', ended='2026-10-15', outcome='Finished', pages_read=568)
+        report, _ = self.ws.sync([], read_shelf=[self.item()], now=self.now)
+        self.assertEqual(report['questions'], [])
+        rows = self.ws.n.creates(LOG_DS)
+        self.assertEqual((len(rows), rows[0]['Read']['relation'][0]['id']), (1, r))
+        self.assertEqual(self.ws.n.updates(r), [])  # never edits a closed Read
+
+    def test_item_disagreeing_with_a_closed_read_is_questioned(self):
+        r = self.ws.read('Release It! · 2026', self.book, started='2026-09-29', ended='2026-10-10', outcome='Finished', pages_read=568)
+        report, _ = self.ws.sync([], read_shelf=[self.item()], now=self.now)
+        q = report['questions'][0]
+        self.assertEqual((q['kind'], q['read']), ('Finish date', r))
+        self.assertIn('2026-10-10', q['proposed'])
+        self.assertEqual(self.ws.n.creates(LOG_DS), [])
+        self.assertEqual(self.ws.n.updates(r), [])
+
+    def test_feed_finish_and_shelf_finish_are_one_row(self):
+        self.ws.read('Release It! · 2026', self.book, started='2026-09-29')
+        self.ws.sync([FINISHED_ITEM], read_shelf=[self.item()], now=self.now)
+        rows = self.ws.n.creates(LOG_DS)
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(_plain(rows[0]['Goodreads id']['rich_text']), 'ReadStatus10')  # the feed's own event wins
+
+    def test_dnf_shelf_item_logs_a_dnf(self):
+        b = self.ws.book('The Cauldron: The Making of the Modern Middle East', 'Simon Sebag Montefiore')
+        r = self.ws.read('The Cauldron · 2026', b, started='2026-10-10')
+        it = shelf_item('The Cauldron: The Making of the Modern Middle East', 'Simon Sebag Montefiore', added='Fri, 16 Oct 2026 19:18:50 -0700', read_at='', book_id='241861256', review='8529215161')
+        self.ws.sync([], dnf_shelf=[it], now=self.now)
+        rows = self.ws.n.creates(LOG_DS)
+        self.assertEqual((rows[0]['Kind']['select']['name'], rows[0]['Read']['relation'][0]['id'], rows[0]['When']['date']['start']), ('DNF', r, '2026-10-16'))
+        self.assertEqual(_plain(rows[0]['Goodreads id']['rich_text']), 'Shelf8529215161:dnf:2026-10-16')
+
+
+class GapTests(unittest.TestCase):
+    def test_gap_when_oldest_item_is_newer_than_last_newest(self):
+        ws = Workspace()
+        sync_run_row(ws, '2026-10-14T23:45:00-04:00', newest='2026-10-14T20:00:00-04:00')
+        report, _ = ws.sync([FINISHED_ITEM, LATE_ITEM], now='2026-10-16T23:45:00-04:00')  # oldest 2026-10-15 05:29 PT > 2026-10-14 20:00 ET
+        gaps = [q for q in report['questions'] if q['kind'] == 'Gap']
+        self.assertEqual(len(gaps), 1)
+        self.assertEqual(gaps[0]['key'], 'gap:2026-10-14T20:00:00-04:00')
+        self.assertTrue(gaps[0]['default_applied'])
+        self.assertIn('2026-10-15', gaps[0]['question'])
+
+    def test_no_gap_when_the_window_overlaps(self):
+        ws = Workspace()
+        sync_run_row(ws, '2026-10-15T23:45:00-04:00', newest='2026-10-15T20:00:00-04:00')
+        report, _ = ws.sync([FINISHED_ITEM, LATE_ITEM], now='2026-10-16T23:45:00-04:00')
+        self.assertEqual([q for q in report['questions'] if q['kind'] == 'Gap'], [])
+
+    def test_no_gap_on_the_first_run(self):
+        ws = Workspace()
+        report, _ = ws.sync([FINISHED_ITEM, LATE_ITEM])
+        self.assertEqual([q for q in report['questions'] if q['kind'] == 'Gap'], [])
+
+
+class ArchiveTests(unittest.TestCase):
+    def test_archive_appends_by_guid(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as d:
+            n1 = gs.archive_items(Path(d), [PAGE_ITEM, PCT_ITEM], '2026-10-16')
+            n2 = gs.archive_items(Path(d), [PCT_ITEM, NOTE_ITEM], '2026-10-17')
+            self.assertEqual((n1, n2), (2, 1))
+            lines = [json.loads(l) for f in sorted(Path(d).glob('*.jsonl')) for l in f.read_text().splitlines()]
+            self.assertEqual([l['guid'] for l in lines], ['UserStatus1', 'UserStatus2', 'UserStatus3'])
+            self.assertEqual(sorted(p.name for p in Path(d).glob('*.jsonl')), ['2026-10-16.jsonl', '2026-10-17.jsonl'])
+            self.assertEqual(lines[0]['description'], PAGE_ITEM['description'])
 
 
 # ---------------------------------------------------------------- backfill --apply dedupe
@@ -539,10 +732,13 @@ class OfflineReplayTests(unittest.TestCase):
         lib.load_raw(raw)
         items = gs.rss_items((FIX / 'live_updates.xml').read_bytes())
         shelf = gs.rss_items((FIX / 'live_shelf_currently-reading_1.xml').read_bytes())
-        report = gs.run_sync(None, items, shelf, {'book_cache': {}, 'runs': []}, offline_lib=lib, now='2026-10-17T09:00:00-04:00')
+        read_shelf = gs.rss_items((FIX / 'live_shelf_read_1.xml').read_bytes()) if (FIX / 'live_shelf_read_1.xml').exists() else []
+        dnf_shelf = gs.rss_items((FIX / 'live_shelf_did-not-finish_1.xml').read_bytes()) if (FIX / 'live_shelf_did-not-finish_1.xml').exists() else []
+        shelves = {'currently-reading': shelf, 'read': read_shelf, 'did-not-finish': dnf_shelf}
+        report = gs.run_sync(None, items, shelves, {'book_cache': {}, 'runs': []}, offline_lib=lib, now='2026-10-17T09:00:00-04:00')
         expected = json.loads((FIX / 'expected_live.json').read_text(encoding='utf-8'))
-        self.assertEqual(report['plan'], expected)
-        self.assertEqual(report['unmatched'], [])
+        self.assertEqual(report['plan'], expected['plan'])
+        self.assertEqual([(q['kind'], q['key']) for q in report['questions']], [tuple(x) for x in expected['questions']])
 
 
 # ---------------------------------------------------------------- the Sync queue (step 2)
@@ -554,7 +750,7 @@ class QueueSchemaTests(unittest.TestCase):
         self.assertEqual(props['Book']['relation']['data_source_id'], BOOKS_DS)
         self.assertEqual(props['Read']['relation']['data_source_id'], READS_DS)
         kinds = {o['name'] for o in props['Kind']['select']['options']}
-        self.assertTrue({'Edition', 'Pages read', 'Reread or reopen', 'Unmatched book', 'No open Read', 'Gap', 'Sync run'} <= kinds)
+        self.assertTrue({'Edition', 'Pages read', 'Reread or reopen', 'Unmatched book', 'No open Read', 'Still reading', 'Finish date', 'Gap', 'Sync run'} <= kinds)
         self.assertEqual([o['name'] for o in props['Status']['select']['options']], ['Open', 'Answered', 'Dismissed', 'Done'])
 
     def test_init_queue_creates_the_database_and_reports_its_id(self):
@@ -670,7 +866,7 @@ class QueueTests(unittest.TestCase):
     def test_offline_run_reports_questions_without_a_queue(self):
         lib = small_library()
         item = progress_item('UserStatus208', 'Mon, 12 Oct 2026 21:00:00 -0400', '999', 'A Title Notion Lacks', 10, 200)
-        report = gs.run_sync(None, [item], [], {'book_cache': {}, 'runs': []}, offline_lib=lib, now='2026-10-17T09:00:00-04:00')
+        report = gs.run_sync(None, [item], {}, {'book_cache': {}, 'runs': []}, offline_lib=lib, now='2026-10-17T09:00:00-04:00')
         self.assertEqual(report['questions'][0]['kind'], 'Unmatched book')
         self.assertEqual(report['open_questions'], [])
 
