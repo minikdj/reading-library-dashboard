@@ -23,6 +23,12 @@ docs/brief.md          the original brief and counting rules
 docs/CHAT_HANDOFF.md   paste-ready brief for a claude.ai chat (publishing procedure, sync rule)
 docs/REFRESH.md        the unattended refresh: pull queries, scripts, publish order, the weekly routine and its blockers
 docs/lists/            Steve's lists as matched, the tag plan, the missing-works research
+sync/goodreads_sync.py the nightly Goodreads → Notion sync (events into the Reading log, Reads created and closed, questions in the Sync queue); sync/README.md
+sync/test_sync.py      its tests (python3 -m unittest discover sync); sync/fixtures/ saved feeds and the expected offline plan
+sync/backfill.py       review-page timelines → Reading log rows (one-time backfill; docs/GAP_FILL.md for gaps)
+.github/workflows/goodreads-sync.yml   the nightly job (04:45 UTC) and its manual dry run
+skills/reading/SKILL.md  the claude.ai `reading` skill, kept here as the source copy
+docs/SYNC_REVIEW.md    the sync's decided specification; docs/SYNC_HANDOFF.md the build order; docs/RUNBOOK_SYNC.md the runbook section
 ```
 
 ## Refreshing the dashboard
@@ -30,12 +36,17 @@ docs/lists/            Steve's lists as matched, the tag plan, the missing-works
 The repo is the source of truth and the artifact is a published copy: the artifact's page is the `files/index.html` document in its own store and its datasets are uploaded files, so nothing on it reads the repo. Change the repo, commit, then publish. Before overwriting `files/index.html`, read it from the store and compare its `text` with the committed file; a difference means the store has edits that aren't in git. `docs/CHAT_HANDOFF.md` is the paste-ready brief for a claude.ai chat.
 
 1. **Pull** the four databases with the Notion connector's SQL mode, 100 rows per call (`ORDER BY url LIMIT 100 OFFSET n`), selecting only the raw columns `analyze.py` reads (`python3 pipeline/pull_merge.py --print-sql` prints the exact queries). Formula and rollup columns are not visible to SQL; the pipeline rebuilds them from raw columns. Save each page verbatim to `data/raw/pages/<db>_<offset>.json`, then `python3 pipeline/pull_merge.py --pulled YYYY-MM-DD --expect …`, which checks the pages, writes `data/raw/*.json` and records the pull date in `data/raw/meta.json`. Details in `docs/REFRESH.md` §1.
-2. `python3 pipeline/analyze.py` — its as-of date comes from `data/raw/meta.json` (or `--as-of YYYY-MM-DD`); the year range and tracking start are derived from the reads. Check the printed sanity numbers against the runbook (230 finished reads, pages by year, 400 paper + 201 Kindle, 37 Classic / 287 Canonical work, 43 books without pages, for the 2026-10-16 pull).
-3. `python3 pipeline/bundle.py`. (`python3 pipeline/refresh.py` does steps 2 and 3 and writes `data/out/refresh_summary.json` with the sanity lines, the headline changes against HEAD and the changed datasets.)
-4. Upload each changed `data/out/ds/<id>.json` as an artifact asset (`Artifact` publish with `asset: true`), put the new blob id in `dashboard/datasets.json`, delete the old blob.
-5. `python3 dashboard/make_docs.py`, then an `ArtifactData` batch write of `dashboard/docs/batch.json` to the artifact (pin `if_version` on every existing document).
+2. `python3 sync/goodreads_sync.py --export-queue data/out/sync_queue.json` (needs `sync/.env`) so the Unconfirmed tile is current; skip it to keep the last count.
+3. `python3 pipeline/analyze.py` — its as-of date comes from `data/raw/meta.json` (or `--as-of YYYY-MM-DD`); the year range and tracking start are derived from the reads. Check the printed sanity numbers against the runbook (230 finished reads, pages by year, 400 paper + 201 Kindle, 37 Classic / 287 Canonical work, 43 books without pages, for the 2026-10-16 pull).
+4. `python3 pipeline/bundle.py`. (`python3 pipeline/refresh.py` does steps 3 and 4 and writes `data/out/refresh_summary.json` with the sanity lines, the headline changes against HEAD and the changed datasets.)
+5. Upload each changed `data/out/ds/<id>.json` as an artifact asset (`Artifact` publish with `asset: true`), put the new blob id in `dashboard/datasets.json`, delete the old blob.
+6. `python3 dashboard/make_docs.py`, then an `ArtifactData` batch write of `dashboard/docs/batch.json` to the artifact (pin `if_version` on every existing document).
 
-Steps 1, 4 and 5 go through Claude's tools, not the shell.
+Steps 1, 5 and 6 go through Claude's tools, not the shell.
+
+## Goodreads sync
+
+Dan marks books started, finished and page-by-page on Goodreads; the nightly job in `sync/` copies those events into Notion (the Reading log), creates and closes Reads from them, keeps the wishlist tagged, and asks a question in the Notion **Sync queue** for every uncertain case with the default already applied. Answers come by chat ("anything to resolve?", "confirm all", "N: Paper") or by ticking `Confirm` in Notion; the next run applies them. The dashboard's **Unconfirmed** tile counts the open questions (dataset `sync_queue`, from `python3 sync/goodreads_sync.py --export-queue data/out/sync_queue.json` before a refresh). Details and invariants: `sync/README.md`; the specification: `docs/SYNC_REVIEW.md`.
 
 ## Counting rules (short form; the runbook is authoritative)
 
@@ -55,7 +66,7 @@ Steps 1, 4 and 5 go through Claude's tools, not the shell.
 ## Roadmap (ask for any of these)
 
 - Scheduled refresh of the dashboard (weekly pull + republish): pipeline ready and the routine designed in `docs/REFRESH.md`; waiting on cadence, environment and connector confirmation before it is created.
-- Logging reads and purchases by chat (the `reading` skill already does this against Notion).
+- Logging reads and purchases by chat (the `reading` skill already does this against Notion); Goodreads events arrive by the nightly sync.
 - Goodreads features still missing: ratings/reviews per read (Read Notes exists), reading challenges and yearly goals, shelves beyond Lists, a "what to read next" view ranked by list membership, era and length.
-- Per-read reading speed once Started dates are recorded going forward.
+- Per-read reading speed from the Reading log's progress rows (the sync now records real Started dates and page-by-page progress going forward).
 - Covers (Books.Cover via Open Library by ISBN).

@@ -1,59 +1,81 @@
-# Goodreads → Notion nightly sync
+# Goodreads → Notion sync
 
-Goodreads is where Dan marks a book started and updates his page each day; Notion is canonical for what book and edition he is reading. This job copies the Goodreads events into Notion every night so the library gets real Started dates and a per-read progress stream.
+Goodreads is where Dan marks a book started, posts his page each day and marks it finished; Notion is canonical for which book and which copy. `goodreads_sync.py` copies the Goodreads **events** into Notion once a night, so the library gets real Started and Ended dates and a per-read progress stream without anything typed in chat. It is never a source of truth about the past: Goodreads shelf *state* is consulted only inside a time fence, to recover events the short-lived updates feed has already dropped. The decided specification is `docs/SYNC_REVIEW.md`; the hand-off that built it is `docs/SYNC_HANDOFF.md`.
 
-## What it does
+## What a run does
 
-`goodreads_sync.py` runs nightly, as a Claude Code cloud routine (see Setup) or, as a fallback, under launchd on the Mac (plist in this folder):
+1. **Watermark.** The last successful run's time, from the newest `Sync run` row in the Sync queue, minus 48 hours. Anything earlier is history and is never compared, matched or touched. No row yet = the whole feed. `--since YYYY-MM-DD` overrides it.
+2. **Answers.** Sync queue rows Dan answered or confirmed since the last run are applied first (see *Questions*). Pending events (an earlier run could not place them) are retried.
+3. **Updates feed** (`/user/updates_rss/<id>`): started / page N of M / N% done / finished / did not finish / wants to read, each with a unique id. Events after the watermark that are not yet in the Reading log (by `Goodreads id`, then by Read + Kind + Eastern date + Page) are written, one row each.
+4. **Shelves, fenced.** `currently-reading` (always), `read`, `did-not-finish` and `to-read` items dated after the watermark, or whose Book has an open Read, become events (`Shelf<review>:<kind>:<date>`) and go through the same path, so a Finished the feed aged out still closes the Read and a start still creates one. A read-shelf item that disagrees with a closed Read raises a question; it never edits.
+5. **Reads** (the only automatic changes, invariant 2 in the script's docstring):
+   - *Create* an open Read on a Started (or a currently-reading item, or progress on a Book whose last Read closed more than 14 days ago): `<Title> · <year>` [(reread)], Started = the event's Eastern date, Dates estimated only when the date is a shelf date or a progress-derived guess, Edition = the only owned copy, else the copy of the last Read, else blank with Format read from the last Read; Edition inferred ✓ when set; Notes "Created from Goodreads <date>".
+   - *Close* on Finished / DNF: Ended (never one Dan set), Outcome, on DNF Pages read = the last logged page; Notes "Closed from Goodreads <date>". A Read with Dan's own Pages read is not closed (question instead).
+   - *Reopen* when progress arrives within 14 days of a close the sync made (Notes "Reopened from Goodreads <date>: progress continued"). After a close Dan made it is a question. Later than 14 days is a reread.
+   - *Started* is filled when blank and replaces an estimated one; a shelf date only fills a blank and stays flagged estimated.
+   - A Finished followed by later progress in the same feed is a stray: skipped and noted once on the Read.
+   - A changed Goodreads page total on an open Read is an *Edition change* question only. A closed Read's copy is never written by the sync.
+6. **Wishlist.** "Wants to read" and fenced to-read items add Lists `Goodreads WTR` and `Wishlisted`; a missing Book is created per the runbook (Author checked by Name and Sort name, Source Goodreads, no Edition, genres left for chat) with a *Book created* question. Books tagged Goodreads WTR that are no longer on the to-read shelf are reported in the log and `unmatched.json`, never untagged.
+7. **Gap check.** The feed window is recorded on the Sync run row; when tonight's oldest item is newer than last night's newest, a *Gap* question says which span may be missing (`docs/GAP_FILL.md` fills it by hand). A last successful run older than two days raises one too.
+8. **Sync run row** written only after a complete, error-free run, so a partial run (a feed down, a Notion error on one event) leaves the watermark where it was and the next run picks everything up again.
 
-1. Fetches Dan's Goodreads **updates RSS** (the activity stream, where "started reading", "is on page N of M", "is N% done" and "finished reading" items appear). The official Goodreads API was retired in 2020; the per-user RSS feeds are what remains, and their wording is not documented, so the parser keeps each item's raw sentence on the event.
-2. Skips items it has seen (ids in `state.json`), then matches each new event to a Notion **Book** by title, tie-breaking on author surname, and to that Book's **open Read** (no Outcome yet). It never creates Books or Reads.
-3. Appends one row per event to the **Reading log** database (append-only: this is the event stream the Reads rows summarise) and, for a Started event on a Read whose Started is blank, sets Started and clears Dates estimated.
-4. Compares the Goodreads **currently-reading shelf** with Notion's open Reads, both ways, and reports every difference (for example "Goodreads: currently reading Lonesome Dove since Oct 9, but Notion's last Read of it is Finished, ended 2026-06-30").
-5. Writes anything it couldn't match, and the shelf differences, to `unmatched.json` and the log, for Dan to resolve by chat (usually "Goodreads says you started X; log it in Notion").
+Every automatic change is written to the Read's Notes with the date and "from Goodreads"; a rerun on the same feed writes nothing new.
 
-Only the public feed URL goes to Goodreads, with a generic User-Agent. Nothing personal leaves the machine.
+## Questions (the Sync queue, Notion under Media › Library)
 
-## What the feeds do and don't carry (checked 2026-10-16 against Dan's account)
+Every uncertain case is a row in the **Sync queue** (data source `4e8f45b7-8f9c-4018-8108-7eff25029227`) with the default already applied in Notion (`Default applied` ✓, the value in `Proposed`). Questions are confirmations, not blockers, and never expire. Kinds and what an answer does on the next run:
 
-- **Updates feed** (`/user/updates_rss/<id>`): "started reading", "is on page N of M" (with the note Dan typed), "finished reading", "did not finish", "wants to read", plus likes of other people's updates (ignored). Only the most recent items; polled nightly.
-- **Shelf feeds** (`/review/list_rss/<id>?shelf=…&per_page=200&page=n`): every book on a shelf with `user_read_at` (finished date), `user_date_added`, `user_date_created` (when the review row was made), author, ISBN. No Started date. The read shelf had 221 items on 2026-10-16.
-- **Review pages** (`/review/show/<id>`), which show the full Reading progress timeline with the Started date and every page update, redirect anonymous requests to sign-in, so a script can't read them. Backfilling the full history would need Dan signed in to Goodreads in the Claude browser pane, with Claude reading each review page there (one-time, 221 pages).
-- A cheaper partial backfill: for reads where Dan shelved the book as currently-reading when he started it, `user_date_created` on the read shelf is the day he started. Where it falls within a plausible window before `user_read_at` it can fill a blank or estimated Started; bulk-imported rows (created long before or on the same day as the finish) are skipped.
+| Kind | Asked when | `Confirm` ✓ | `Answer` |
+|---|---|---|---|
+| Edition | every Read the sync creates | keeps the copy, clears Edition inferred, notes "Confirmed by Dan" | a copy (`Paper`, `Kindle`, a publisher, an Edition title) sets it and clears the flag |
+| Pages read | every Read the sync closes | keeps Ended and Pages read as applied | a page count, `ended YYYY-MM-DD`, or both |
+| Reread or reopen | progress on a Read Dan closed within 14 days | nothing | `reopen` or `reread` |
+| Finish date | a finish that disagrees with a closed Read, or lands on no Read, or on a Read with Dan's Pages read | leaves Notion as is | `attach`, `close`, `new`, or a Read title |
+| Still reading | an open Read older than two days that is not on the currently-reading shelf | still reading (asked again after 14 days) | `still`, `finished YYYY-MM-DD [pages N]`, `dnf YYYY-MM-DD [pages N]` |
+| Edition change | Goodreads' page total changed on an open Read | keeps the copy | a copy, as for Edition |
+| Unmatched book | no, or several, Books match the title | leaves the event unlogged | a Notion Book title |
+| No open Read | progress with no Read to land on | leaves it unlogged | a Read title |
+| Book created | a wishlist Book was created | nothing to do | a Book title if it duplicates one |
+| Gap | the updates feed dropped items, or no run for two days | noted | — |
+
+`drop` dismisses any row. In chat, the `reading` skill answers "anything to resolve?", "confirm all [except N]" and "N: <answer>" by writing `Confirm` or `Answer` on the rows; the next run applies them. `sync/unmatched.json` mirrors the open rows after each run and the dashboard's **Unconfirmed** tile shows their count (`--export-queue`, then `docs/REFRESH.md`).
 
 ## Reading log schema (Notion, under Media › Library)
 
 | Property | Type | Notes |
 |---|---|---|
-| Name | title | `<Book> · <Kind> [p.N] · <date>` |
+| Name | title | `<Book> · <Kind> [p.N] · <Eastern date>` |
 | Read | relation → Reads | the reading episode this event belongs to |
 | Book | relation → Books | |
-| When | date (with time) | the Goodreads timestamp |
+| When | date (with time) | the Goodreads timestamp (Pacific); dates elsewhere are Eastern |
 | Kind | select: Started / Progress / Finished / DNF | |
-| Page | number | from "page N of M" |
-| Of pages | number | the M; Goodreads' page count for its edition, not necessarily Dan's copy |
-| Percent | number | from "N% done", or derived from page/of pages |
+| Page, Of pages, Percent | number | from "page N of M" / "N% done"; Percent has one decimal; Of pages is Goodreads' edition, information only |
 | Source | select: Goodreads / Manual | |
-| Goodreads id | text | the feed item id; unique per event, used to dedupe |
-| Raw | text | the feed sentence as received |
+| Goodreads id | text | `ReadStatus…` / `UserStatus…` (feed), `Shelf<review>:<kind>:<date>` (shelf), `Timeline<review>:<n>` (backfill, `docs/GAP_FILL.md`), `Backfill:…` (by hand) |
+| Note, Raw | text | the comment Dan attached; the feed sentence as received |
 
-Reads.Pages read stays Dan's own figure (pages actually read, indexes skipped); Page here is where he was on a given day.
+Reads.Pages read stays Dan's own figure (pages actually read); Page here is where he was on a given day.
 
-## Setup (once)
+## Where it runs
 
-1. **Notion token.** Dan already has an internal integration (made for the old reading-list CLI; its token is `NOTION_API_KEY` in `~/claude/.env`). Reuse it: in Notion open each of **Books, Reads, Authors, Reading log** › `···` (top right) › **Connections** › add that integration. Or make a new one at notion.so/my-integrations (Internal, read + insert + update content) and connect it the same way. The token is the value starting `ntn_` or `secret_`.
-2. **Reading log database.** Exists since 2026-10-16 under Media › Library (data source `ced88101-f6c5-4e4e-9c1f-8305afeb2e7e`, the script's default).
-3. **Cloud routine (preferred).** In claude.ai/code create an environment for `minikdj/reading-library-dashboard` with environment variables `NOTION_TOKEN` and `GOODREADS_USER_ID=151183858`; the routine runs `python3 sync/goodreads_sync.py` nightly and commits nothing. `unmatched.json` is printed in the run log, since the cloud checkout is thrown away.
-4. **Local fallback (launchd).** `cp sync/.env.example sync/.env`, fill in `NOTION_TOKEN`, then:
-   ```bash
-   cp sync/com.dan.reading-library.goodreads-sync.plist ~/Library/LaunchAgents/
-   launchctl load ~/Library/LaunchAgents/com.dan.reading-library.goodreads-sync.plist
-   ```
-5. **Checks before trusting it.** `--parse-only` prints the parsed events; `--fixture … --shelf-fixture … --offline-library data/raw` matches against the repo's raw pull with no token; `--dry-run` matches against Notion and prints the writes without saving.
+**GitHub Actions** (`.github/workflows/goodreads-sync.yml`): nightly at 04:45 UTC (23:45 Eastern in winter, 00:45 in summer) and on *Run workflow* with a `dry_run` tick box and a `since` override. The job runs the unit tests, then the sync, and keeps `unmatched.json` and the feed archive as a run artifact. Repository secrets: `NOTION_TOKEN`, `GOODREADS_USER_ID` (and `GOODREADS_RSS_KEY` only if the profile ever goes private). Durable state lives in Notion, so the throw-away checkout is fine; the job commits nothing. A failed run emails through GitHub's default notifications.
 
-## Day to day
+**Manual fallback from the Mac**: `cp sync/.env.example sync/.env`, fill in the token, then `python3 sync/goodreads_sync.py --dry-run` to see the plan, or without the flag to run it. The launchd plist in this folder (`com.dan.reading-library.goodreads-sync.plist`, 23:45 nightly) still works for a Mac-only setup: `cp` it to `~/Library/LaunchAgents/` and `launchctl load` it; keep only one runner enabled.
 
-- Log: `~/Library/Logs/goodreads-sync.log`. State: `sync/state.json`. Unmatched events: `sync/unmatched.json`.
-- `python3 sync/goodreads_sync.py --fixture sync/fixtures/updates_sample.xml --parse-only` exercises the parser offline.
-- A missed night (Mac asleep) runs at the next wake. The updates feed only keeps recent items, so a Mac off for many days can miss progress updates; Started and Finished still arrive as long as the item is within the feed window.
-- To stop: `launchctl unload ~/Library/LaunchAgents/com.dan.reading-library.goodreads-sync.plist`.
+Only the public feed URLs go to Goodreads, with the generic User-Agent `reading-library-sync/1.0`. No Goodreads password, cookie or key is stored anywhere; review pages are never fetched by the job.
+
+## Commands
+
+```
+python3 -m unittest discover sync                       the tests (122, offline; the fake Notion is in test_sync.py)
+python3 sync/goodreads_sync.py --dry-run                fetch, read Notion, print the plan, write nothing
+python3 sync/goodreads_sync.py --since 2026-10-01       take events and shelf items after this date (recovery)
+python3 sync/goodreads_sync.py --parse-only --fixture f.xml   print the parsed events of a saved feed
+python3 sync/goodreads_sync.py --fixture … --shelf-fixture … --read-fixture … --dnf-fixture … --offline-library data/raw --plan out.json
+                                                        replay saved feeds against the repo's raw pull; sync/fixtures/expected_live.json is the committed plan
+python3 sync/goodreads_sync.py --export-queue data/out/sync_queue.json   the open questions as the dashboard dataset
+python3 sync/goodreads_sync.py --init-queue             create the Sync queue database (done 2026-10-17)
+python3 sync/backfill.py --apply [--dry-run]            write a timeline plan (docs/GAP_FILL.md); dedupes by id and by Read + Kind + date + Page
+```
+
+Files: `sync/state.json` (the Goodreads-id → Book cache, optional), `sync/unmatched.json` (mirror of the open questions and this run's report), `sync/feed_archive/<date>.jsonl` (the raw feed items, appended by id; git-ignored), `~/Library/Logs/goodreads-sync.log` (launchd only).

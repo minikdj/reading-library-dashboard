@@ -11,7 +11,8 @@
   </array>
   <key>WorkingDirectory</key>
   <string>/Users/djm/Projects/reading-library-dashboard</string>
-  <!-- 23:45 every night. A run missed while the Mac was asleep fires at the next wake. -->
+  <!-- Manual fallback only: GitHub Actions (.github/workflows/goodreads-sync.yml) is the nightly runner.
+       23:45 every night. A run missed while the Mac was asleep fires at the next wake. -->
   <key>StartCalendarInterval</key>
   <dict>
     <key>Hour</key>
