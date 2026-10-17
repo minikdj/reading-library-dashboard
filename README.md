@@ -18,10 +18,13 @@ dashboard/make_docs.py   writes the store documents for an ArtifactData batch wr
 data/raw/              books, editions, reads, authors as pulled from Notion (2026-10-16)
 data/out/              computed stats; data/out/ds/ the attached datasets
 docs/brief.md          the original brief and counting rules
+docs/CHAT_HANDOFF.md   paste-ready brief for a claude.ai chat (publishing procedure, sync rule)
 docs/lists/            Steve's lists as matched, the tag plan, the missing-works research
 ```
 
 ## Refreshing the dashboard
+
+The repo is the source of truth and the artifact is a published copy: the artifact's page is the `files/index.html` document in its own store and its datasets are uploaded files, so nothing on it reads the repo. Change the repo, commit, then publish. Before overwriting `files/index.html`, read it from the store and compare its `text` with the committed file; a difference means the store has edits that aren't in git. `docs/CHAT_HANDOFF.md` is the paste-ready brief for a claude.ai chat.
 
 1. **Pull** the four databases into `data/raw/*.json` with the Notion connector's SQL mode, 100 rows per call (`ORDER BY url LIMIT 100 OFFSET n`), selecting only the raw columns `analyze.py` reads. Formula and rollup columns are not visible to SQL; the pipeline rebuilds them from raw columns. Keep each page's rows verbatim.
 2. `python3 pipeline/analyze.py` — check the printed sanity numbers against the runbook (230 finished reads, pages by year, 400 paper + 201 Kindle, 37 Classic / 287 Canonical work, 43 books without pages, as of 2026-10-16).
