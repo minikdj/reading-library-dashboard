@@ -8,3 +8,5 @@ backfill/timelines/
 backfill/plan.json
 backfill/applied.json
 backfill/reviews.json
+backfill/chat/
+backfill/*.zip
