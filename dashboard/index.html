@@ -39,6 +39,22 @@
 .lib [data-dash-source-state=empty] { color: transparent; }
 .lib [data-dash-source-state=refreshing] { opacity: .5; transition: opacity var(--cds-dur-slow); }
 .lib .lib-bar-label { fill: var(--color-fg); font-size: var(--cds-font-size-caption); }
+.lib .lib-card.lib-has-ov { min-height: 20rem; }
+.lib .lib-crumbs { font-size: var(--cds-font-size-caption); color: var(--color-fg-muted); margin: 0 0 var(--cds-gap-xs); display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+.lib .lib-crumbs button { all: unset; cursor: pointer; color: var(--color-fg); text-decoration: underline; text-underline-offset: 2px; }
+.lib .lib-crumbs button:focus-visible { outline: 1px solid var(--color-fg-muted); border-radius: 2px; }
+.lib .lib-crumbs b { font-weight: var(--cds-font-weight-medium); color: var(--color-fg); }
+.lib .lib-chart text.lib-xl-link { cursor: pointer; text-decoration: underline; text-decoration-style: dotted; text-underline-offset: 2px; fill: var(--color-fg); }
+.lib .lib-ov { position: absolute; inset: 0; z-index: 3; background: color-mix(in srgb, var(--color-panel) 90%, transparent); backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px); border-radius: var(--cds-radius); padding: var(--cds-pad-lg); display: flex; flex-direction: column; gap: var(--cds-gap-sm); overflow: hidden; }
+.lib .lib-ov h3 { padding-right: 2.25rem; }
+.lib .lib-ov .lib-note, .lib .lib-ov .lib-cap { margin: 0; }
+.lib .lib-ov-x { position: absolute; top: var(--cds-gap-sm); right: var(--cds-gap-sm); width: 28px; height: 28px; border-radius: 50%; border: 1px solid var(--color-border-line); background: var(--color-panel); color: var(--color-fg-muted); font: inherit; font-size: 18px; line-height: 1; cursor: pointer; display: flex; align-items: center; justify-content: center; padding: 0; }
+.lib .lib-ov-x:hover, .lib .lib-ov-x:focus-visible { color: var(--color-fg); }
+.lib .lib-ov-x:focus:not(:focus-visible) { outline: none; }
+.lib .lib-ov-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 8rem), 1fr)); gap: var(--cds-gap-sm) var(--cds-gap-md); }
+.lib .lib-ov-stats .lib-k { color: var(--color-fg-muted); font-size: var(--cds-font-size-caption); }
+.lib .lib-ov-v { font-family: var(--font-anthropic-serif); font-size: 1.25rem; line-height: 1.15; }
+.lib .lib-ov-scroll { flex: 1 1 auto; min-height: 0; max-height: none; }
 </style>
 
 <h1 id="top">Reading library</h1>
@@ -52,23 +68,23 @@
   <div class="lib-card lib-tile"><div class="lib-k">Shelf read</div><div class="lib-v dash-skeleton" data-source="headline" data-field="shelf_read_pct" data-row="0">—</div><div class="lib-s">of <span data-source="headline" data-field="owned_books" data-row="0">—</span> owned works read or in progress</div></div>
   <div class="lib-card lib-tile"><div class="lib-k">Backlog</div><div class="lib-v dash-skeleton" data-source="headline" data-field="backlog_books" data-row="0">—</div><div class="lib-s">books · about <span data-source="headline" data-field="backlog_years_at_pace" data-row="0">—</span> years at current pace</div></div>
 </div>
-<p class="lib-sub">Snapshot of the Notion Library databases (Books, Editions, Reads, Authors) as of <span data-source="headline" data-field="as_of" data-row="0">—</span>. "Read" means a Read with Outcome = Finished; a DNF never counts. Pages per read are the Pages read field (indexes and appendices skipped), else the copy's or the book's page count.</p>
+<p class="lib-sub">Snapshot of the Notion Library databases (Books, Editions, Reads, Authors) as of <span data-source="headline" data-field="as_of" data-row="0">—</span>. "Read" means a Read with Outcome = Finished; a DNF never counts. Pages per read are the Pages read field (indexes and appendices skipped), else the copy's or the book's page count. Click a bar for the data behind it; the × closes the view.</p>
 
 <h2 id="read">What I've read</h2>
-<p class="lib-sub">History starts in <span data-source="headline" data-field="tracking_from" data-row="0" data-fmt="my">—</span>, so the first year is partial; the latest year runs to <span data-source="headline" data-field="as_of" data-row="0" data-fmt="md">—</span>.</p>
+<p class="lib-sub">Click a year on an axis to see its months, then a month for its weeks; the trail above the chart climbs back up. History starts in <span data-source="headline" data-field="tracking_from" data-row="0" data-fmt="my">—</span>, so the first year is partial; the latest year runs to <span data-source="headline" data-field="as_of" data-row="0" data-fmt="md">—</span>.</p>
 <div class="lib-grid">
-  <div class="lib-card" id="c-books-year"><h3>Books finished per year</h3><p class="lib-note">Fiction and non-fiction, by the year the read ended</p><div class="lib-chart dash-skeleton" data-source="by_year" data-chart="booksYear" style="min-height:240px"></div><p class="lib-cap">Every finished read has a Fiction value. Rereads count each time.</p></div>
-  <div class="lib-card" id="c-pages-year"><h3>Pages per year</h3><p class="lib-note">Pages counted across finished reads</p><div class="lib-chart dash-skeleton" data-source="by_year" data-chart="pagesYear" style="min-height:240px"></div><p class="lib-cap"><span data-source="headline" data-field="reads_pages_read_filled" data-row="0">—</span> of <span data-source="headline" data-field="reads_finished" data-row="0">—</span> finished reads carry a Pages read value; the rest fall back to the copy's or the book's page count.</p></div>
+  <div class="lib-card" id="c-books-year"><h3>Books finished per year</h3><p class="lib-note">Fiction and non-fiction, by the year the read ended</p><div class="lib-chart dash-skeleton" data-source="by_year reads_log other_reads" data-chart="booksYear" style="min-height:240px"></div><p class="lib-cap">Every finished read has a Fiction value. Rereads count each time.</p></div>
+  <div class="lib-card" id="c-pages-year"><h3>Pages per year</h3><p class="lib-note">Pages counted across finished reads</p><div class="lib-chart dash-skeleton" data-source="by_year reads_log other_reads" data-chart="pagesYear" style="min-height:240px"></div><p class="lib-cap"><span data-source="headline" data-field="reads_pages_read_filled" data-row="0">—</span> of <span data-source="headline" data-field="reads_finished" data-row="0">—</span> finished reads carry a Pages read value; the rest fall back to the copy's or the book's page count.</p></div>
 </div>
 <div class="lib-grid lib-wide">
-  <div class="lib-card" id="c-pages-month"><h3>Pages per month</h3><p class="lib-note">Pages of reads finished in each month, <span data-source="headline" data-field="tracking_from" data-row="0" data-fmt="my">—</span> to <span data-source="headline" data-field="as_of" data-row="0" data-fmt="my">—</span></p><div class="lib-chart dash-skeleton" data-source="by_month" data-chart="pagesMonth" style="min-height:220px"></div><p class="lib-cap">A long book lands entirely in the month it was finished, so single months spike.</p></div>
+  <div class="lib-card" id="c-pages-month"><h3>Pages per month</h3><p class="lib-note">Pages of reads finished in each month, <span data-source="headline" data-field="tracking_from" data-row="0" data-fmt="my">—</span> to <span data-source="headline" data-field="as_of" data-row="0" data-fmt="my">—</span></p><div class="lib-chart dash-skeleton" data-source="by_month reads_log other_reads" data-chart="pagesMonth" style="min-height:220px"></div><p class="lib-cap">A long book lands entirely in the month it was finished, so single months spike.</p></div>
 </div>
 <div class="lib-grid">
-  <div class="lib-card" id="c-pace"><h3>Pace: pages per calendar day</h3><p class="lib-note">Pages finished in the year ÷ days in the year tracked</p><div class="lib-chart dash-skeleton" data-source="by_year" data-chart="pace" style="min-height:220px"></div><p class="lib-cap">Per-read speed can't be computed: Dates estimated is ✓ on <span data-source="headline" data-field="reads_dates_estimated" data-row="0">—</span> of <span data-source="headline" data-field="reads_finished" data-row="0">—</span> finished reads and only <span data-source="headline" data-field="reads_with_speed" data-row="0">—</span> have a confirmed Started date, so this uses calendar time instead.</p></div>
-  <div class="lib-card" id="c-format-year"><h3>Format read, per year</h3><p class="lib-note">The linked edition's format, else Format read</p><div class="lib-chart dash-skeleton" data-source="by_year" data-chart="formatYear" style="min-height:220px"></div><p class="lib-cap">Every finished read has a format; <span data-source="headline" data-field="reads_no_edition" data-row="0">—</span> reads link no edition (mostly library books) and default to Kindle per the runbook. <span data-source="headline" data-field="reads_audio" data-row="0">—</span> audio reads recorded.</p></div>
+  <div class="lib-card" id="c-pace"><h3>Pace: pages per calendar day</h3><p class="lib-note">Pages finished in the year ÷ days in the year tracked</p><div class="lib-chart dash-skeleton" data-source="by_year reads_log other_reads" data-chart="pace" style="min-height:220px"></div><p class="lib-cap">Per-read speed can't be computed: Dates estimated is ✓ on <span data-source="headline" data-field="reads_dates_estimated" data-row="0">—</span> of <span data-source="headline" data-field="reads_finished" data-row="0">—</span> finished reads and only <span data-source="headline" data-field="reads_with_speed" data-row="0">—</span> have a confirmed Started date, so this uses calendar time instead.</p></div>
+  <div class="lib-card" id="c-format-year"><h3>Format read, per year</h3><p class="lib-note">The linked edition's format, else Format read</p><div class="lib-chart dash-skeleton" data-source="by_year reads_log other_reads" data-chart="formatYear" style="min-height:220px"></div><p class="lib-cap">Every finished read has a format; <span data-source="headline" data-field="reads_no_edition" data-row="0">—</span> reads link no edition (mostly library books) and default to Kindle per the runbook. <span data-source="headline" data-field="reads_audio" data-row="0">—</span> audio reads recorded.</p></div>
 </div>
 <div class="lib-grid">
-  <div class="lib-card" id="c-canon-year"><h3>Canonical reading, per year</h3><p class="lib-note">Classic (Greek and Roman antiquity), Canonical work (pre-1970 canon), other</p><div class="lib-chart dash-skeleton" data-source="by_year" data-chart="canonYear" style="min-height:220px"></div><p class="lib-cap">Genre tags on <span data-source="headline" data-field="genre_auto" data-row="0">—</span> of <span data-source="headline" data-field="books_total" data-row="0">—</span> books are Claude's (Genre auto ✓), not yet confirmed.</p></div>
+  <div class="lib-card" id="c-canon-year"><h3>Canonical reading, per year</h3><p class="lib-note">Classic (Greek and Roman antiquity), Canonical work (pre-1970 canon), other</p><div class="lib-chart dash-skeleton" data-source="by_year reads_log other_reads" data-chart="canonYear" style="min-height:220px"></div><p class="lib-cap">Genre tags on <span data-source="headline" data-field="genre_auto" data-row="0">—</span> of <span data-source="headline" data-field="books_total" data-row="0">—</span> books are Claude's (Genre auto ✓), not yet confirmed.</p></div>
 </div>
 <div class="lib-grid">
   <div class="lib-card" id="c-genres-year-f"><h3>Fiction genres over time</h3><p class="lib-note">Finished fiction reads per year, top six genres, the rest folded into Other</p><div class="lib-chart dash-skeleton" data-source="genres_by_year" data-chart="genresYearF" style="min-height:220px"></div><p class="lib-cap">A read tagged with two genres counts once in each. "Literary fiction" is the catch-all for canonical novels with no sharper genre. Canon tags are left out.</p></div>
@@ -191,6 +207,11 @@
 
   // vertical (stacked) bars: rows, x key, series [{key,label,color,fmt?}]
   function bars(box, rows, x, series, opts = {}) {
+    if (opts.crumbs) {
+      const nav = document.createElement('div'); nav.className = 'lib-crumbs';
+      opts.crumbs.forEach((c, i) => { if (i) nav.append('›'); if (c.onClick) { const b = document.createElement('button'); b.type = 'button'; b.textContent = c.label; b.addEventListener('click', c.onClick); nav.appendChild(b); } else { const b = document.createElement('b'); b.textContent = c.label; nav.appendChild(b); } });
+      box.appendChild(nav);
+    }
     legend(box, series);
     const W = Math.max(box.clientWidth, 200), H = opts.height || 200, fs = 11, mb = opts.rotate ? 52 : 26;
     const svg = d3.select(box).append('svg').attr('viewBox', `0 0 ${W} ${H}`).attr('width', '100%');
@@ -206,21 +227,24 @@
     const xl = svg.append('g').selectAll('text').data(rows.filter((r, i) => i % every === 0)).join('text').attr('font-size', fs).attr('fill', 'var(--color-fg-muted)').text(r => opts.xlabel ? opts.xlabel(r[x]) : r[x]);
     if (opts.rotate) xl.attr('text-anchor', 'end').attr('transform', r => `translate(${xs(r[x]) + xs.bandwidth() / 2 + 4},${H - mb + 6}) rotate(-45)`);
     else xl.attr('x', r => xs(r[x]) + xs.bandwidth() / 2).attr('y', H - 8).attr('text-anchor', 'middle');
+    if (opts.onLabel) xl.filter(function () { return this.textContent !== ''; }).attr('class', 'lib-xl-link').attr('fill', null).on('click', (ev, r) => opts.onLabel(r));
     svg.append('line').attr('x1', ml).attr('x2', W - 4).attr('y1', y(0)).attr('y2', y(0)).attr('stroke', 'var(--cds-chart-axis)');
-    const g = svg.append('g');
+    const g = svg.append('g'); const segs = new Map();
     for (const r of rows) {
-      let acc = 0;
+      let acc = 0; const list = []; segs.set(r, list);
       series.forEach((s, i) => {
         const v = +r[s.key] || 0; if (!v) return;
         const y1 = y(acc + v), y0 = y(acc); acc += v;
         const gap = i > 0 ? 2 : 0;
         const h = Math.max(0, y0 - y1 - gap);
+        list.push({ key: s.key, y0, y1 });
         g.append('rect').attr('x', xs(r[x]) + off).attr('y', y1).attr('width', bw).attr('height', h).attr('rx', Math.min(4, h / 2)).attr('fill', s.color);
       });
     }
-    svg.append('g').selectAll('rect').data(rows).join('rect').attr('x', r => xs(r[x])).attr('y', 0).attr('width', xs.bandwidth()).attr('height', H).attr('fill', 'transparent')
+    svg.append('g').selectAll('rect').data(rows).join('rect').attr('x', r => xs(r[x])).attr('y', 0).attr('width', xs.bandwidth()).attr('height', H).attr('fill', 'transparent').attr('cursor', opts.onClick ? 'pointer' : null)
       .on('mousemove', (ev, r) => showTip(box, ev, opts.title ? opts.title(r) : String(r[x]), series.filter(s => r[s.key] != null).map(s => [s.label, (s.fmt || yfmt)(+r[s.key]), series.length > 1 ? s.color : null]).concat(opts.extra ? opts.extra(r) : [])))
-      .on('mouseleave', hideTip);
+      .on('mouseleave', hideTip)
+      .on('click', (ev, r) => { if (!opts.onClick) return; hideTip(); const my = d3.pointer(ev, svg.node())[1]; const seg = (segs.get(r) || []).find(s => my >= s.y1 && my <= s.y0); opts.onClick(r, series.length > 1 && seg ? seg.key : null); });
   }
 
   // horizontal bars: rows, label key, series [{key,label,color}] (grouped when >1)
@@ -244,9 +268,10 @@
         svg.append('rect').attr('x', ml).attr('y', yb).attr('width', Math.max(0, xsc(v) - ml)).attr('height', bh).attr('rx', 4).attr('fill', s.color);
         svg.append('text').attr('x', xsc(v) + 4).attr('y', yb + bh / 2 + 4).attr('font-size', fs).attr('fill', 'var(--color-fg-muted)').text(vfmt(v));
       });
-      svg.append('rect').attr('x', 0).attr('y', top).attr('width', W).attr('height', rowH).attr('fill', 'transparent')
+      svg.append('rect').attr('x', 0).attr('y', top).attr('width', W).attr('height', rowH).attr('fill', 'transparent').attr('cursor', opts.onClick ? 'pointer' : null)
         .on('mousemove', ev => showTip(box, ev, String(r[label]), series.map(s => [s.label, vfmt(+r[s.key] || 0), series.length > 1 ? s.color : null]).concat(opts.extra ? opts.extra(r) : [])))
-        .on('mouseleave', hideTip);
+        .on('mouseleave', hideTip)
+        .on('click', () => { if (opts.onClick) { hideTip(); opts.onClick(r); } });
     });
     svg.append('line').attr('x1', ml).attr('x2', ml).attr('y1', 0).attr('y2', H).attr('stroke', 'var(--cds-chart-axis)');
   }
@@ -270,9 +295,10 @@
         svg.append('rect').attr('x', x0 + (j > 0 ? 2 : 0)).attr('y', top + 4).attr('width', Math.max(0, x1 - x0 - (j > 0 ? 2 : 0))).attr('height', 16).attr('rx', 4).attr('fill', s.color);
       });
       svg.append('text').attr('x', xsc(acc) + 5).attr('y', top + 16).attr('font-size', fs).attr('fill', 'var(--color-fg-muted)').text(vfmt(acc));
-      svg.append('rect').attr('x', 0).attr('y', top).attr('width', W).attr('height', rowH).attr('fill', 'transparent')
+      svg.append('rect').attr('x', 0).attr('y', top).attr('width', W).attr('height', rowH).attr('fill', 'transparent').attr('cursor', opts.onClick ? 'pointer' : null)
         .on('mousemove', ev => showTip(box, ev, String(r[label]), series.map(s => [s.label, vfmt(+r[s.key] || 0), s.color]).concat(opts.extra ? opts.extra(r) : [])))
-        .on('mouseleave', hideTip);
+        .on('mouseleave', hideTip)
+        .on('click', () => { if (opts.onClick) { hideTip(); opts.onClick(r); } });
     });
   }
 
@@ -285,6 +311,98 @@
       tb.appendChild(tr);
     }
   }
+
+  // ---------- detail overlay: click a bar, the card shows the data behind that one item
+  const hd0 = () => { const h = dash.data('headline'); return h.status === 'ok' && h.data[0] ? h.data[0] : {}; };
+  const reads = () => { const r = dash.data('reads_log'); return r.status === 'ok' ? r.data : []; };
+  const genresOf = x => x.genres ? String(x.genres).split(', ') : [];
+  const names = v => v ? String(v).split(', ') : [];
+  const eraOf = y => y == null ? 'No year' : y < 500 ? 'Antiquity (to 500)' : y < 1500 ? 'Medieval (500–1499)' : y < 1800 ? '1500–1799' : y < 1900 ? '1800s' : y < 1950 ? '1900–1949' : y < 2000 ? '1950–1999' : '2000s';
+  const centuryOrder = y => y < 0 ? -Math.ceil(-y / 100) : Math.floor(y / 100);
+  function closeDetail(el) { const card = el.closest('.lib-card'); if (!card) return; card.querySelectorAll('.lib-ov').forEach(o => o.remove()); card.classList.remove('lib-has-ov'); }
+  function openDetail(el, d) {
+    const card = el.closest('.lib-card'); if (!card) return;
+    closeDetail(card);
+    const ov = document.createElement('div'); ov.className = 'lib-ov'; ov.setAttribute('role', 'dialog'); ov.setAttribute('aria-label', d.title);
+    if (d.sources) ov.dataset.source = d.sources;
+    const x = document.createElement('button'); x.type = 'button'; x.className = 'lib-ov-x'; x.textContent = '×'; x.setAttribute('aria-label', 'Close'); x.addEventListener('click', () => closeDetail(card)); ov.appendChild(x);
+    const h = document.createElement('h3'); h.textContent = d.title; ov.appendChild(h);
+    if (d.sub) { const p = document.createElement('p'); p.className = 'lib-note'; p.textContent = d.sub; ov.appendChild(p); }
+    if (d.stats && d.stats.length) {
+      const g = document.createElement('div'); g.className = 'lib-ov-stats';
+      for (const [k, v] of d.stats) { const c = document.createElement('div'); const kk = document.createElement('div'); kk.className = 'lib-k'; kk.textContent = k; const vv = document.createElement('div'); vv.className = 'lib-ov-v'; vv.textContent = v; c.append(kk, vv); g.appendChild(c); }
+      ov.appendChild(g);
+    }
+    if (d.rows && d.rows.length) {
+      const wrap = document.createElement('div'); wrap.className = 'lib-scroll lib-ov-scroll';
+      const t = document.createElement('table'); t.dataset.rowKey = d.rowKey || ''; if (d.rowSource) t.dataset.source = d.rowSource;
+      const thead = document.createElement('thead'); const tr = document.createElement('tr');
+      d.cols.forEach((c, i) => { const th = document.createElement('th'); th.dataset.field = c.key; if (c.num) th.className = 'lib-n'; th.textContent = d.heads ? d.heads[i] : c.key; tr.appendChild(th); });
+      thead.appendChild(tr); t.appendChild(thead); t.appendChild(document.createElement('tbody'));
+      fillTable(t, d.rows, d.cols); wrap.appendChild(t); ov.appendChild(wrap);
+    }
+    if (d.note) { const p = document.createElement('p'); p.className = 'lib-cap'; p.textContent = d.note; ov.appendChild(p); }
+    card.classList.add('lib-has-ov'); card.appendChild(ov); x.focus({ preventScroll: true });
+  }
+  document.addEventListener('keydown', ev => { if (ev.key === 'Escape') root.querySelectorAll('.lib-ov').forEach(o => closeDetail(o)); });
+  const READ_COLS = [{ key: 'title' }, { key: 'author' }, { key: 'ended' }, { key: 'pages', num: true, f: fmt }, { key: 'format' }, { key: 'genres' }];
+  const READ_HEADS = ['Title', 'Author', 'Finished', 'Pages', 'Format', 'Genres'];
+  function readsDetail(el, title, sub, rows, extraStats, note, sources) {
+    rows = rows.slice().sort((a, b) => String(b.ended).localeCompare(String(a.ended)));
+    const pages = d3.sum(rows, r => +r.pages || 0), books = new Set(rows.map(r => r.title + '|' + r.author)).size, fic = rows.filter(r => r.fiction === 'Fiction').length;
+    openDetail(el, { title, sub, sources: sources || 'reads_log',
+      stats: [['Reads', fmt(rows.length)], ['Distinct books', fmt(books)], ['Pages', fmt(pages)], ['Fiction / non-fiction', fmt(fic) + ' / ' + fmt(rows.length - fic)]].concat(extraStats || []),
+      rows, cols: READ_COLS, heads: READ_HEADS, rowSource: 'reads_log', rowKey: 'title,ended',
+      note: note || (rows.length ? null : 'No finished reads match.') });
+  }
+
+  // ---------- time drill: a year's months, a month's weeks (from the reads log), with breadcrumbs
+  const DRILL = {};
+  let redraw = () => {};
+  const utc = s => new Date(s + 'T00:00:00Z'), iso = dt => dt.toISOString().slice(0, 10), addDays = (dt, n) => new Date(dt.getTime() + n * 864e5);
+  const dnfs = () => { const o = dash.data('other_reads'); return o.status === 'ok' ? o.data.filter(r => r.kind === 'DNF' && r.ended) : []; };
+  function monthBuckets(year) {
+    const h = hd0(); const from = String(h.tracking_from || '2021-08-01'), to = iso(addDays(utc(String(h.as_of || iso(new Date()))), 1));
+    const out = [];
+    for (let m = 1; m <= 12; m++) {
+      const start = `${year}-${String(m).padStart(2, '0')}-01`, end = m === 12 ? `${year + 1}-01-01` : `${year}-${String(m + 1).padStart(2, '0')}-01`;
+      const s0 = start > from ? start : from, e0 = end < to ? end : to; if (s0 >= e0) continue;
+      out.push({ label: d3.utcFormat('%b')(utc(start)), key: start.slice(0, 7), start: s0, end: e0, days: Math.round((utc(e0) - utc(s0)) / 864e5), full: d3.utcFormat('%B %Y')(utc(start)), note: (s0 !== start || e0 !== end) ? 'partial' : '' });
+    }
+    return out;
+  }
+  function weekBuckets(year, ym) {
+    const mb = monthBuckets(year).find(b => b.key === ym); if (!mb) return [];
+    const out = []; const dow = utc(mb.start).getUTCDay(); let w = addDays(utc(mb.start), -((dow + 6) % 7));
+    while (iso(w) < mb.end) {
+      const ws = iso(w) > mb.start ? iso(w) : mb.start, we = iso(addDays(w, 7)) < mb.end ? iso(addDays(w, 7)) : mb.end;
+      const last = addDays(utc(we), -1);
+      out.push({ label: `${d3.utcFormat('%-d')(utc(ws))}–${d3.utcFormat('%-d')(last)}`, key: ws, start: ws, end: we, days: Math.round((utc(we) - utc(ws)) / 864e5), full: `${d3.utcFormat('%-d')(utc(ws))}–${d3.utcFormat('%-d %b %Y')(last)}`, note: '' });
+      w = addDays(w, 7);
+    }
+    return out;
+  }
+  function bucketRows(buckets) {
+    const rs = reads(), ds = dnfs();
+    return buckets.map(b => {
+      const fy = rs.filter(x => x.ended >= b.start && x.ended < b.end), dy = ds.filter(x => x.ended >= b.start && x.ended < b.end);
+      const n = f => fy.filter(f).length, pages = d3.sum(fy, x => +x.pages || 0);
+      return Object.assign({}, b, { year: b.label, month: b.label, reads: fy.length, books: new Set(fy.map(x => x.title + '|' + x.author)).size, pages, rereads: n(x => x.reread), dnf: dy.length,
+        pages_per_day: Math.round(10 * pages / Math.max(b.days, 1)) / 10,
+        fiction: n(x => x.fiction === 'Fiction'), nonfiction: n(x => x.fiction === 'Non-fiction'), fiction_unknown: n(x => !x.fiction),
+        paper: n(x => x.format === 'Paper'), kindle: n(x => x.format === 'Kindle'), audio: n(x => x.format === 'Audio'), format_unknown: n(x => !x.format),
+        classic: n(x => x.canon === 'Classic'), canonical: n(x => x.canon === 'Canonical work'), other: n(x => !x.canon) });
+    });
+  }
+  // what a time chart shows at its current drill level: rows, x key, crumbs and the axis-label action
+  function timeView(name, baseRows, xkey) {
+    const d = DRILL[name] || {}; const up = () => { delete DRILL[name]; redraw(); };
+    if (!d.year) return { rows: baseRows, x: xkey, crumbs: null, onLabel: r => { DRILL[name] = { year: +String(r[xkey]).slice(0, 4) }; redraw(); } };
+    if (!d.month) return { rows: bucketRows(monthBuckets(d.year)), x: 'label', crumbs: [{ label: 'All years', onClick: up }, { label: String(d.year) }], onLabel: r => { DRILL[name] = { year: d.year, month: r.key }; redraw(); } };
+    return { rows: bucketRows(weekBuckets(d.year, d.month)), x: 'label', crumbs: [{ label: 'All years', onClick: up }, { label: String(d.year), onClick: () => { DRILL[name] = { year: d.year }; redraw(); } }, { label: d3.utcFormat('%B')(utc(d.month + '-01')) }], onLabel: null };
+  }
+  const inBucket = r => x => r.start ? (x.ended >= r.start && x.ended < r.end) : x.year === r.year;
+  const spanTitle = r => r.full || (r.month && /^\d{4}-\d{2}$/.test(String(r.month)) ? d3.utcFormat('%B %Y')(utc(r.month + '-01')) : String(r.year));
 
   // ---------- sortable / searchable log
   const allTbl = root.querySelector('[data-table=all]');
@@ -305,7 +423,7 @@
 
   // ---------- draw
   const chart = name => root.querySelector(`[data-chart=${name}]`);
-  dash.onData(() => {
+  dash.onData(redraw = () => {
     // tiles + takeaway
     const hd = dash.data('headline');
     root.querySelectorAll('[data-source=headline]').forEach(el => {
@@ -316,6 +434,7 @@
       el.textContent = f === 'shelf_read_pct' ? fmt(+v) + '%' : (typeof v === 'number' ? (Number.isInteger(v) ? fmt(v) : fmt1(v)) : String(v ?? '—'));
     });
 
+    const bl = dash.data('backlog');
     const by = dash.data('by_year');
     const yearSeries = {
       booksYear: [{ key: 'fiction', label: 'Fiction', color: COL.fiction }, { key: 'nonfiction', label: 'Non-fiction', color: COL.nonfiction }],
@@ -324,12 +443,20 @@
       formatYear: [{ key: 'paper', label: 'Paper', color: COL.paper }, { key: 'kindle', label: 'Kindle', color: COL.kindle }],
       canonYear: [{ key: 'classic', label: 'Classic', color: COL.classic }, { key: 'canonical', label: 'Canonical work', color: COL.canonical }, { key: 'other', label: 'Other', color: COL.other }],
     };
+    const SEG = { fiction: x => x.fiction === 'Fiction', nonfiction: x => x.fiction === 'Non-fiction', paper: x => x.format === 'Paper', kindle: x => x.format === 'Kindle', classic: x => x.canon === 'Classic', canonical: x => x.canon === 'Canonical work', other: x => !x.canon };
+    const SEGLABEL = { fiction: 'Fiction', nonfiction: 'Non-fiction', paper: 'Paper', kindle: 'Kindle', classic: 'Classic', canonical: 'Canonical work', other: 'Not canon' };
     for (const [name, series] of Object.entries(yearSeries)) {
       const box = chart(name); if (!ready(box, by)) continue;
-      bars(box, by.data, 'year', series, { height: 220, yfmt: name === 'pace' ? fmt1 : fmt, title: r => r.note ? `${r.year} (${r.note})` : String(r.year), extra: name === 'booksYear' ? (r => [['Reads', fmt(r.reads)], ['Rereads', fmt(r.rereads)], ['DNF', fmt(r.dnf)]]) : (name === 'pace' ? (r => [['Days counted', fmt(r.days)], ['Pages', fmt(r.pages)]]) : null) });
+      const v = timeView(name, by.data, 'year');
+      bars(box, v.rows, v.x, series, { height: 220, yfmt: name === 'pace' ? fmt1 : fmt, crumbs: v.crumbs, onLabel: v.onLabel, title: r => r.note ? `${spanTitle(r)} (${r.note})` : spanTitle(r), extra: name === 'booksYear' ? (r => [['Reads', fmt(r.reads)], ['Rereads', fmt(r.rereads)], ['DNF', fmt(r.dnf)]]) : (name === 'pace' ? (r => [['Days counted', fmt(r.days)], ['Pages', fmt(r.pages)]]) : null),
+        onClick: (r, seg) => { const f = seg && SEG[seg] ? SEG[seg] : null; const t = spanTitle(r);
+          readsDetail(box, f ? `${t} · ${SEGLABEL[seg]}` : t, r.note ? `Reads finished in ${t} (${r.note})` : `Reads finished in ${t}`,
+            reads().filter(inBucket(r)).filter(x => !f || f(x)), f ? [] : [['Pages a day', fmt1(r.pages_per_day)], ['Rereads', fmt(r.rereads)], ['DNF', fmt(r.dnf)]], null, 'reads_log other_reads'); } });
     }
 
-    const bm = dash.data('by_month'); { const box = chart('pagesMonth'); if (ready(box, bm)) bars(box, bm.data, 'month', [{ key: 'pages', label: 'Pages', color: C[0] }], { height: 200, xlabel: m => m.endsWith('-01') || m === '2021-08' ? m.slice(0, 4) : '', title: r => d3.utcFormat('%b %Y')(new Date(r.month + '-01T00:00:00Z')), extra: r => [['Books finished', fmt(r.reads)]] }); }
+    const bm = dash.data('by_month'); { const box = chart('pagesMonth'); if (ready(box, bm)) { const v = timeView('pagesMonth', bm.data, 'month');
+      bars(box, v.rows, v.x, [{ key: 'pages', label: 'Pages', color: C[0] }], { height: 200, crumbs: v.crumbs, onLabel: v.onLabel, xlabel: v.x === 'month' ? (m => m.endsWith('-01') || m === String(bm.data[0] && bm.data[0].month) ? m.slice(0, 4) : '') : null, title: r => spanTitle(r), extra: r => [['Books finished', fmt(r.reads)]],
+        onClick: r => readsDetail(box, spanTitle(r), r.start ? 'Reads finished in this span' : 'Reads finished in the month', reads().filter(r.start ? inBucket(r) : (x => String(x.ended).startsWith(r.month))), null, null, 'reads_log') }); } }
 
     const gy = dash.data('genres_by_year');
     for (const [name, which] of [['genresYearF', 'Fiction'], ['genresYearN', 'Non-fiction']]) { const box = chart(name); if (!ready(box, gy)) continue;
@@ -338,22 +465,34 @@
       const top = Array.from(tot, ([g, n]) => [g, n]).sort((a, b) => b[1] - a[1]).slice(0, 6).map(d => d[0]);
       const years = Array.from(new Set(gy.data.map(r => r.year))).sort();
       const rows = years.map(y => { const o = { year: y, Other: 0 }; for (const g of top) o[g] = 0; for (const r of data.filter(r => r.year === y)) { if (top.includes(r.genre)) o[r.genre] += +r.reads; else o.Other += +r.reads; } return o; });
-      bars(box, rows, 'year', top.map((g, i) => ({ key: g, label: g, color: C[i] })).concat([{ key: 'Other', label: 'Other genres', color: COL.other }]), { height: 220 });
+      bars(box, rows, 'year', top.map((g, i) => ({ key: g, label: g, color: C[i] })).concat([{ key: 'Other', label: 'Other genres', color: COL.other }]), { height: 220,
+        onClick: (r, seg) => { const inYear = reads().filter(x => x.year === r.year && x.fiction === which);
+          const sel = !seg ? inYear : seg === 'Other' ? inYear.filter(x => genresOf(x).some(g => !top.includes(g))) : inYear.filter(x => genresOf(x).includes(seg));
+          readsDetail(box, `${r.year} · ${seg ? (seg === 'Other' ? 'Other genres' : seg) : which}`, `${which} reads finished in ${r.year}${seg ? ', tagged ' + (seg === 'Other' ? 'with a genre outside the top six' : seg) : ''}`, sel); } });
     }
     const gr = dash.data('genres_read');
     for (const [name, which, color] of [['genresReadF', 'Fiction', COL.fiction], ['genresReadN', 'Non-fiction', COL.nonfiction]]) { const box = chart(name); if (!ready(box, gr)) continue;
       const rows = gr.data.filter(r => r.fiction === which).sort((a, b) => +b.reads - +a.reads).slice(0, 12);
-      hbars(box, rows, 'genre', [{ key: 'reads', label: 'Reads', color }], { extra: r => [['Distinct books', fmt(r.books)], ['Pages', fmt(r.pages)]] });
+      hbars(box, rows, 'genre', [{ key: 'reads', label: 'Reads', color }], { extra: r => [['Distinct books', fmt(r.books)], ['Pages', fmt(r.pages)]],
+        onClick: r => readsDetail(box, `${r.genre} · ${which}`, 'Finished reads of books tagged with this genre', reads().filter(x => x.fiction === which && genresOf(x).includes(r.genre))) });
     }
-    const fr = dash.data('forms_read'); { const box = chart('forms'); if (ready(box, fr)) hbars(box, fr.data.slice().sort((a, b) => +b.books - +a.books), 'form', [{ key: 'books', label: 'Books', color: C[1] }]); }
-    const cr = dash.data('centuries_read'); { const box = chart('centuries'); if (ready(box, cr)) bars(box, cr.data.slice().sort((a, b) => +a.order - +b.order), 'century', [{ key: 'books', label: 'Books', color: C[4] }], { height: 250, rotate: true }); }
+    const fr = dash.data('forms_read'); { const box = chart('forms'); if (ready(box, fr)) hbars(box, fr.data.slice().sort((a, b) => +b.books - +a.books), 'form', [{ key: 'books', label: 'Books', color: C[1] }],
+      { onClick: r => readsDetail(box, r.form, 'Finished reads of books with this Form', reads().filter(x => (x.form || 'No form') === r.form)) }); }
+    const cr = dash.data('centuries_read'); { const box = chart('centuries'); if (ready(box, cr)) bars(box, cr.data.slice().sort((a, b) => +a.order - +b.order), 'century', [{ key: 'books', label: 'Books', color: C[4] }], { height: 250, rotate: true,
+      onClick: r => readsDetail(box, r.century, 'Finished reads of works first published in this century', reads().filter(x => x.original_year != null && centuryOrder(+x.original_year) === +r.order)) }); }
     const er = dash.data('eras_by_status'); { const box = chart('eras'); if (ready(box, er)) {
       const eras = Array.from(new Set(er.data.map(r => r.era)));
       const rows = eras.map(e => { const o = { era: e }; for (const r of er.data.filter(r => r.era === e)) o[r.status] = +r.books; return o; });
-      hbars(box, rows, 'era', [{ key: 'Read', label: 'Read', color: COL.read }, { key: 'Unread', label: 'Unread shelf', color: COL.unread }, { key: 'Wishlist', label: 'Wishlist', color: COL.wishlist }]);
+      hbars(box, rows, 'era', [{ key: 'Read', label: 'Read', color: COL.read }, { key: 'Unread', label: 'Unread shelf', color: COL.unread }, { key: 'Wishlist', label: 'Wishlist', color: COL.wishlist }],
+        { onClick: r => { const pool = bl.status === 'ok' ? bl.data.filter(x => x.dimension === 'Era' && x.key === r.era) : []; const pg = p => d3.sum(pool.filter(x => x.pool === p), x => +x.pages);
+            readsDetail(box, r.era, 'Finished reads of works from this era, with what is still waiting', reads().filter(x => eraOf(x.original_year == null ? null : +x.original_year) === r.era),
+              [['Unread shelf', `${fmt(r.Unread || 0)} books · ${fmt(pg('Unread shelf'))} pages`], ['Wishlist', `${fmt(r.Wishlist || 0)} books · ${fmt(pg('Wishlist'))} pages`]],
+              'Unread shelf and wishlist titles are not in the attached datasets, so only the finished reads are listed.', 'reads_log eras_by_status backlog'); } });
     } }
-    const ta = dash.data('top_authors'); { const box = chart('authors'); if (ready(box, ta)) hbars(box, ta.data.slice(0, 15), 'author', [{ key: 'reads', label: 'Reads', color: C[0] }], { extra: r => [['Distinct books', fmt(r.books)], ['Pages', fmt(r.pages)]] }); }
-    const tt = dash.data('top_translators'); { const box = chart('translators'); if (ready(box, tt)) hbars(box, tt.data.slice(0, 10), 'translator', [{ key: 'reads', label: 'Reads', color: C[2] }], { extra: r => [['Distinct books', fmt(r.books)]] }); }
+    const ta = dash.data('top_authors'); { const box = chart('authors'); if (ready(box, ta)) hbars(box, ta.data.slice(0, 15), 'author', [{ key: 'reads', label: 'Reads', color: C[0] }], { extra: r => [['Distinct books', fmt(r.books)], ['Pages', fmt(r.pages)]],
+      onClick: r => readsDetail(box, r.author, 'Finished reads by this author', reads().filter(x => names(x.author).includes(r.author))) }); }
+    const tt = dash.data('top_translators'); { const box = chart('translators'); if (ready(box, tt)) hbars(box, tt.data.slice(0, 10), 'translator', [{ key: 'reads', label: 'Reads', color: C[2] }], { extra: r => [['Distinct books', fmt(r.books)]],
+      onClick: r => readsDetail(box, r.translator, 'Finished reads whose linked edition names this translator or editor', reads().filter(x => names(x.translator).includes(r.translator))) }); }
 
     const rl = dash.data('reads_log');
     const longest = root.querySelector('[data-table=longest]'), rereads = root.querySelector('[data-table=rereads]');
@@ -367,17 +506,30 @@
 
     // own
     const cb = dash.data('copies_by');
-    { const box = chart('copies'); if (ready(box, cb)) { const rows = cb.data.filter(r => r.dimension === 'Format').map(r => ({ key: r.key, copies: +r.copies, kind: 'Format' })).concat(cb.data.filter(r => r.dimension === 'Binding').map(r => ({ key: 'Paper · ' + r.key, copies: +r.copies }))); hbars(box, rows, 'key', [{ key: 'copies', label: 'Copies', color: C[2] }]); } }
-    { const box = chart('publishers'); if (ready(box, cb)) hbars(box, cb.data.filter(r => r.dimension === 'Publisher').slice(0, 20), 'key', [{ key: 'copies', label: 'Copies', color: C[3] }]); }
+    { const box = chart('copies'); if (ready(box, cb)) { const rows = cb.data.filter(r => r.dimension === 'Format').map(r => ({ key: r.key, copies: +r.copies, kind: 'Format' })).concat(cb.data.filter(r => r.dimension === 'Binding').map(r => ({ key: 'Paper · ' + r.key, copies: +r.copies, kind: 'Binding' })));
+      hbars(box, rows, 'key', [{ key: 'copies', label: 'Copies', color: C[2] }], { onClick: r => { const h = hd0(); const base = r.kind === 'Format' ? ['all owned copies', +h.owned_copies] : ['owned paper copies', +h.paper_copies];
+        openDetail(box, { title: r.key, sub: r.kind === 'Format' ? 'Owned copies in this format' : 'Owned paper copies with this binding', sources: 'copies_by headline', stats: [['Copies', fmt(r.copies)], ['Share of ' + base[0], base[1] ? pct(r.copies / base[1]) : '—']], note: 'Owned = Owned ✓ with no Disposed date. Copies are not books: a work held on paper and Kindle counts twice.' }); } }); } }
+    { const box = chart('publishers'); if (ready(box, cb)) hbars(box, cb.data.filter(r => r.dimension === 'Publisher').slice(0, 20), 'key', [{ key: 'copies', label: 'Copies', color: C[3] }],
+      { onClick: r => { const h = hd0(); openDetail(box, { title: r.key, sub: 'Owned copies from this publisher or imprint', sources: 'copies_by headline', stats: [['Copies', fmt(r.copies)], ['Share of all owned copies', h.owned_copies ? pct(+r.copies / h.owned_copies) : '—'], ['Publishers in all', fmt(h.publishers_distinct)]], note: 'Publisher is recorded per copy, as printed on the edition.' }); } }); }
     const ss = dash.data('shelf_status');
-    const shelfRows = () => ['Paper', 'Kindle', 'Both'].map(f => { const o = { format: f === 'Both' ? 'Paper + Kindle' : f + ' only', pages: {} }; for (const r of ss.data.filter(r => r.format === f)) { o[r.status] = +r.books; o.pages[r.status] = +r.pages; o['np' + r.status] = +r.books_no_pages; } return o; });
-    { const box = chart('shelf'); if (ready(box, ss)) hstack(box, shelfRows(), 'format', [{ key: 'Read', label: 'Read', color: COL.read }, { key: 'Reading', label: 'Reading', color: COL.reading }, { key: 'Abandoned', label: 'Abandoned', color: COL.abandoned }, { key: 'Unread', label: 'Unread', color: COL.unread }], { extra: r => [['Unread pages', fmt(r.pages.Unread || 0)], ['Unread with no page count', fmt(r.npUnread || 0)]] }); }
-    { const box = chart('shelfPages'); if (ready(box, ss)) hbars(box, shelfRows().map(r => ({ format: r.format, pages: r.pages.Unread || 0, books: r.Unread || 0 })), 'format', [{ key: 'pages', label: 'Unread pages', color: COL.unread }], { extra: r => [['Unread books', fmt(r.books)]] }); }
-    const kq = dash.data('kindle_by_quarter'); { const box = chart('kindleQ'); if (ready(box, kq)) bars(box, kq.data, 'quarter', [{ key: 'copies', label: 'Copies', color: COL.kindle }], { height: 220, xlabel: q => q.endsWith('Q1') || q === '2023 Q4' ? q.slice(0, 4) : '' }); }
-    const kr = dash.data('kindle_read_by_year'); { const box = chart('kindleRead'); if (ready(box, kr)) bars(box, kr.data, 'year', [{ key: 'read', label: 'Read since', color: COL.read }, { key: 'unread', label: 'Still unread', color: COL.unread }], { height: 220, extra: r => [['Bought', fmt(r.copies)]] }); }
+    const shelfRows = () => ['Paper', 'Kindle', 'Both'].map(f => { const o = { key: f, format: f === 'Both' ? 'Paper + Kindle' : f + ' only', pages: {} }; for (const r of ss.data.filter(r => r.format === f)) { o[r.status] = +r.books; o.pages[r.status] = +r.pages; o['np' + r.status] = +r.books_no_pages; } return o; });
+    const shelfDetail = (box, r) => { const sts = ['Read', 'Reading', 'Abandoned', 'Unread']; const total = d3.sum(sts, s => r[s] || 0); const h = hd0();
+      const yrs = h.pages_per_day_365 ? (r.pages.Unread || 0) / (h.pages_per_day_365 * 365) : null;
+      openDetail(box, { title: r.format, sub: 'Owned works held this way, by status', sources: 'shelf_status headline',
+        stats: [['Works', fmt(total)], ['Read or reading', total ? pct(((r.Read || 0) + (r.Reading || 0)) / total) : '—'], ['Unread pages', fmt(r.pages.Unread || 0)], ['Unread at current pace', yrs == null ? '—' : fmt1(yrs) + ' years']],
+        rows: sts.map(s => ({ format: r.key, status: s, books: r[s] || 0, pages: r.pages[s] || 0, no_pages: r['np' + s] || 0 })),
+        cols: [{ key: 'status' }, { key: 'books', num: true, f: fmt }, { key: 'pages', num: true, f: fmt }, { key: 'no_pages', num: true, f: fmt }], heads: ['Status', 'Works', 'Pages', 'No page count'], rowSource: 'shelf_status', rowKey: 'format,status',
+        note: 'Pages are the Book page counts; works without one add nothing. Years at pace use the last 365 days.' }); };
+    { const box = chart('shelf'); if (ready(box, ss)) hstack(box, shelfRows(), 'format', [{ key: 'Read', label: 'Read', color: COL.read }, { key: 'Reading', label: 'Reading', color: COL.reading }, { key: 'Abandoned', label: 'Abandoned', color: COL.abandoned }, { key: 'Unread', label: 'Unread', color: COL.unread }], { extra: r => [['Unread pages', fmt(r.pages.Unread || 0)], ['Unread with no page count', fmt(r.npUnread || 0)]], onClick: r => shelfDetail(box, r) }); }
+    { const box = chart('shelfPages'); if (ready(box, ss)) hbars(box, shelfRows().map(r => ({ format: r.format, pages: r.pages.Unread || 0, books: r.Unread || 0, src: r })), 'format', [{ key: 'pages', label: 'Unread pages', color: COL.unread }], { extra: r => [['Unread books', fmt(r.books)]], onClick: r => shelfDetail(box, r.src) }); }
+    const kq = dash.data('kindle_by_quarter'); { const box = chart('kindleQ'); if (ready(box, kq)) bars(box, kq.data, 'quarter', [{ key: 'copies', label: 'Copies', color: COL.kindle }], { height: 220, xlabel: q => q.endsWith('Q1') || q === '2023 Q4' ? q.slice(0, 4) : '',
+      onClick: r => { const h = hd0(); const d = h.kindle_acquired_top_date ? String(h.kindle_acquired_top_date) : null; const topQ = d ? `${d.slice(0, 4)} Q${Math.floor((+d.slice(5, 7) - 1) / 3) + 1}` : null;
+        openDetail(box, { title: r.quarter, sub: 'Kindle copies by Acquired date', sources: 'kindle_by_quarter headline', stats: [['Copies acquired', fmt(r.copies)], ['Share of dated Kindle copies', h.kindle_with_acquired ? pct(+r.copies / h.kindle_with_acquired) : '—']],
+          note: topQ === r.quarter ? `${fmt(h.kindle_acquired_top_count)} of these share the date ${d}, probably an import date rather than purchases.` : 'Acquired dates exist for Kindle copies only.' }); } }); }
+    const kr = dash.data('kindle_read_by_year'); { const box = chart('kindleRead'); if (ready(box, kr)) bars(box, kr.data, 'year', [{ key: 'read', label: 'Read since', color: COL.read }, { key: 'unread', label: 'Still unread', color: COL.unread }], { height: 220, extra: r => [['Bought', fmt(r.copies)]],
+      onClick: r => openDetail(box, { title: String(r.year), sub: 'Kindle copies acquired this year', sources: 'kindle_read_by_year', stats: [['Bought', fmt(r.copies)], ['Read since', fmt(r.read)], ['Still unread', fmt(r.unread)], ['Share read', +r.copies ? pct(+r.read / +r.copies) : '—']], note: 'A copy counts as read if its work has any finished read, in any format.' }) }); }
 
     // unread
-    const bl = dash.data('backlog');
     const pools = [{ key: 'Unread shelf', label: 'Unread shelf', color: COL.unread }, { key: 'Wishlist', label: 'Wishlist', color: COL.wishlist }];
     const pivot = (dim, limit, order, which) => {
       const src = bl.data.filter(r => r.dimension === dim && (!which || r.fiction === which));
@@ -385,11 +537,15 @@
       return keys.map(k => { const o = { key: k, pg: {} }; for (const r of src.filter(r => r.key === k)) { o[r.pool] = (o[r.pool] || 0) + +r.books; o.pg[r.pool] = (o.pg[r.pool] || 0) + +r.pages; } return o; });
     };
     const extra = r => [['Unread shelf pages', fmt(r.pg['Unread shelf'] || 0)], ['Wishlist pages', fmt(r.pg['Wishlist'] || 0)]];
-    { const box = chart('backlogGenreF'); if (ready(box, bl)) hbars(box, pivot('Genre', 12, null, 'Fiction'), 'key', pools, { extra }); }
-    { const box = chart('backlogGenreN'); if (ready(box, bl)) hbars(box, pivot('Genre', 12, null, 'Non-fiction'), 'key', pools, { extra }); }
-    { const box = chart('backlogEra'); if (ready(box, bl)) hbars(box, pivot('Era', 99, ['Antiquity (to 500)', 'Medieval (500–1499)', '1500–1799', '1800s', '1900–1949', '1950–1999', '2000s', 'No year']), 'key', pools, { extra }); }
-    { const box = chart('backlogLength'); if (ready(box, bl)) hbars(box, pivot('Length', 99, ['Under 200', '200–399', '400–599', '600–899', '900+', 'No page count']), 'key', pools, { extra }); }
-    { const box = chart('backlogCanon'); if (ready(box, bl)) hbars(box, pivot('Canon', 99, ['Classic', 'Canonical work', 'Not canon']), 'key', pools, { extra }); }
+    const backlogDetail = (box, r, sub) => { const h = hd0(); const yrs = p => h.pages_per_day_365 ? fmt1((r.pg[p] || 0) / (h.pages_per_day_365 * 365)) + ' years' : '—';
+      openDetail(box, { title: r.key, sub, sources: 'backlog headline',
+        stats: [['Unread shelf', `${fmt(r['Unread shelf'] || 0)} books · ${fmt(r.pg['Unread shelf'] || 0)} pages`], ['Shelf at current pace', yrs('Unread shelf')], ['Wishlist', `${fmt(r['Wishlist'] || 0)} books · ${fmt(r.pg['Wishlist'] || 0)} pages`], ['Wishlist at current pace', yrs('Wishlist')]],
+        note: 'Books without a page count add nothing to the pages or the years. "Current pace" is the last 365 days.' }); };
+    { const box = chart('backlogGenreF'); if (ready(box, bl)) hbars(box, pivot('Genre', 12, null, 'Fiction'), 'key', pools, { extra, onClick: r => backlogDetail(box, r, 'Fiction books waiting with this genre') }); }
+    { const box = chart('backlogGenreN'); if (ready(box, bl)) hbars(box, pivot('Genre', 12, null, 'Non-fiction'), 'key', pools, { extra, onClick: r => backlogDetail(box, r, 'Non-fiction books waiting with this genre') }); }
+    { const box = chart('backlogEra'); if (ready(box, bl)) hbars(box, pivot('Era', 99, ['Antiquity (to 500)', 'Medieval (500–1499)', '1500–1799', '1800s', '1900–1949', '1950–1999', '2000s', 'No year']), 'key', pools, { extra, onClick: r => backlogDetail(box, r, 'Books waiting from this era') }); }
+    { const box = chart('backlogLength'); if (ready(box, bl)) hbars(box, pivot('Length', 99, ['Under 200', '200–399', '400–599', '600–899', '900+', 'No page count']), 'key', pools, { extra, onClick: r => backlogDetail(box, r, 'Books waiting of this length') }); }
+    { const box = chart('backlogCanon'); if (ready(box, bl)) hbars(box, pivot('Canon', 99, ['Classic', 'Canonical work', 'Not canon']), 'key', pools, { extra, onClick: r => backlogDetail(box, r, 'Books waiting with this canon tag') }); }
   });
 
   // links
