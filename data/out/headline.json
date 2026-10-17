@@ -57,6 +57,22 @@
 "median_unread_pages": 505.0,
 "median_wish_pages": 384.0,
 "shelf_read_pct": 35,
+"reads_pages_read_filled": 230,
+"reads_no_edition": 42,
+"reads_with_translator": 63,
+"reads_audio": 0,
+"disposed_copies": 0,
+"publishers_distinct": 210,
+"copies_no_publisher": 0,
+"kindle_copies": 212,
+"kindle_with_acquired": 207,
+"kindle_acquired_top_date": "2023-11-15",
+"kindle_acquired_top_count": 52,
+"unread_no_pages_paper": 22,
+"unread_no_pages_kindle": 16,
+"unread_no_pages_both": 3,
+"backlog_no_fiction": 7,
+"tracking_from": "2021-08-01",
 "as_of": "2026-10-16"
 }
 ]

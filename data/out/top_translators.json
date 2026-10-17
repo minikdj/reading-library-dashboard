@@ -10,12 +10,12 @@
 "books": 3
 },
 {
-"translator": "Richard Pevear",
+"translator": "Larissa Volokhonsky",
 "reads": 3,
 "books": 3
 },
 {
-"translator": "Larissa Volokhonsky",
+"translator": "Richard Pevear",
 "reads": 3,
 "books": 3
 },
@@ -65,22 +65,22 @@
 "books": 1
 },
 {
-"translator": "G.A. Williamson",
-"reads": 1,
-"books": 1
-},
-{
 "translator": "Peter Sarris",
 "reads": 1,
 "books": 1
 },
 {
-"translator": "Robert Graves",
+"translator": "G.A. Williamson",
 "reads": 1,
 "books": 1
 },
 {
 "translator": "James Rives",
+"reads": 1,
+"books": 1
+},
+{
+"translator": "Robert Graves",
 "reads": 1,
 "books": 1
 },

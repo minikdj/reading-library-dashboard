@@ -262,7 +262,7 @@ write('top_authors', rows)
 tc = Counter(); tb = defaultdict(set)
 for r in fin:
     ts = {t for eid in r['_editions'] if eid in E for t in E[eid]['_translators']}
-    for t in ts: tc[t] += 1; tb[t].add(r['_book'])
+    for t in sorted(ts): tc[t] += 1; tb[t].add(r['_book'])  # sorted: set order varies per process
 rows = [dict(translator=A[t]['Name'] if t in A else t, reads=n, books=len(tb[t])) for t, n in tc.most_common(20)]
 write('top_translators', rows)
 print('finished reads with translator', sum(1 for r in fin if any(E[eid]['_translators'] for eid in r['_editions'] if eid in E)), 'with any edition', sum(1 for r in fin if r['_editions']))
@@ -374,6 +374,8 @@ med_unread = sorted(b['_pages'] for b in unread if b['_pages'])
 med_unread = med_unread[len(med_unread)//2] if med_unread else 0
 med_wish = sorted(b['_pages'] for b in wish if b['_pages']); med_wish = med_wish[len(med_wish)//2] if med_wish else 0
 unread_est_pages = unread_pages + unread_np * med_unread
+acq_top = Counter(e['_acq'] for e in kin).most_common(1); acq_top = acq_top[0] if acq_top else None
+unread_np_by = {f: sum(1 for b in unread if not b['_pages'] and ((f == 'Both' and len(b['_owned_formats']) > 1) or (f != 'Both' and b['_owned_formats'] == [f]))) for f in ('Paper', 'Kindle', 'Both')}
 wish_est_pages = wish_pages + wish_np * med_wish
 head = dict(
     books_read=len(books_read_ids), reads_finished=len(fin), pages_read=pages_total, dnf=len(dnf), reading_now=len(openr),
@@ -396,6 +398,18 @@ head = dict(
     genre_auto=sum(1 for b in B.values() if yes(b.get('Genre auto'))),
     median_unread_pages=med_unread, median_wish_pages=med_wish,
     shelf_read_pct=round(100*sum(1 for b in owned_books if b['_status'] in ('Read','Reading')) / len(owned_books)),
+    # caption facts (the page quotes these so no number lives in markup)
+    reads_pages_read_filled=sum(1 for r in fin if r['_pages_read'] is not None),
+    reads_no_edition=sum(1 for r in fin if not r['_editions']),
+    reads_with_translator=sum(1 for r in fin if any(E[eid]['_translators'] for eid in r['_editions'] if eid in E)),
+    reads_audio=sum(1 for r in fin if r['_format'] == 'Audio'),
+    disposed_copies=sum(1 for e in E.values() if e['_disposed']),
+    publishers_distinct=sum(1 for p in pubc if p != 'Not recorded'), copies_no_publisher=pubc.get('Not recorded', 0),
+    kindle_copies=sum(1 for e in E.values() if e.get('Format') == 'Kindle'), kindle_with_acquired=len(kin),
+    kindle_acquired_top_date=str(acq_top[0]) if acq_top else None, kindle_acquired_top_count=acq_top[1] if acq_top else 0,
+    unread_no_pages_paper=unread_np_by['Paper'], unread_no_pages_kindle=unread_np_by['Kindle'], unread_no_pages_both=unread_np_by['Both'],
+    backlog_no_fiction=sum(1 for b in unread + wish if not b['_fiction']),
+    tracking_from=str(date(2021, 8, 1)),
     as_of=str(TODAY),
 )
 write('headline', [head])
@@ -408,5 +422,5 @@ print('median pages/day per read (speed-eligible)', sp[len(sp)//2] if sp else No
 print('fiction reads', sum(1 for r in fin if B.get(r['_book'],{}).get('_fiction')=='Fiction'), 'nonfiction', sum(1 for r in fin if B.get(r['_book'],{}).get('_fiction')=='Non-fiction'), 'unknown', sum(1 for r in fin if not B.get(r['_book'],{}).get('_fiction')))
 print('format of reads', Counter(r['_format'] for r in fin))
 # form of read books
-rows = [dict(form=f or 'No form', books=n) for f, n in Counter(B[b]['_form'] for b in books_read_ids if b in B).most_common()]
+rows = [dict(form=f or 'No form', books=n) for f, n in sorted(Counter(B[b]['_form'] for b in books_read_ids if b in B).items(), key=lambda kv: (-kv[1], kv[0]))]  # deterministic tie order
 write('forms_read', rows)
