@@ -65,6 +65,8 @@ DEFAULTS = {
     'NOTION_AUTHORS_DS': 'f96682e9-8772-4493-abff-ec079148f1b2',
     'NOTION_EDITIONS_DS': 'd6b4c6a6-4099-4b89-b135-0fa50a918c57',
     'NOTION_LOG_DS': 'ced88101-f6c5-4e4e-9c1f-8305afeb2e7e',  # Reading log, created 2026-10-16 under Media › Library
+    'NOTION_QUEUE_DS': '4e8f45b7-8f9c-4018-8108-7eff25029227',  # Sync queue, created 2026-10-17 by --init-queue under Media › Library
+    'NOTION_LIBRARY_PAGE': '3fb1b15c8b7781ed8af3e5900806fd8e',  # Media › Library, the parent of every library database
     'SYNC_TZ': 'America/New_York',
 }
 
@@ -89,9 +91,9 @@ def cfg(name, required=False):
 
 
 def load_state():
-    if STATE_FILE.exists():
-        return json.loads(STATE_FILE.read_text(encoding='utf-8'))
-    return {'seen': {}, 'book_cache': {}, 'runs': []}
+    state = json.loads(STATE_FILE.read_text(encoding='utf-8')) if STATE_FILE.exists() else {}
+    state.pop('seen', None)  # dedupe is done against Notion, not a local list
+    return {'book_cache': state.get('book_cache') or {}, 'runs': state.get('runs') or []}
 
 
 def save_state(state):
@@ -289,6 +291,14 @@ class Notion:
             return {'id': page_id}
         return self._call('PATCH', f'/pages/{page_id}', {'properties': props})
 
+    def create_database(self, parent_page_id, title, properties):
+        """Create a database under a page; returns the id of its data source."""
+        res = self._call('POST', '/databases', {'parent': {'type': 'page_id', 'page_id': parent_page_id},
+                                                'title': [{'type': 'text', 'text': {'content': title}}],
+                                                'initial_data_source': {'properties': properties}})
+        sources = res.get('data_sources') or ([res['initial_data_source']] if res.get('initial_data_source') else [])
+        return sources[0]['id'] if sources else res.get('id')
+
 
 def prop_text(p):
     if not p:
@@ -467,7 +477,8 @@ class Store:
 
     def __init__(self, notion=None, lib=None, dry_run=False, today=None):
         self.notion, self.lib, self.dry_run = notion, lib, dry_run
-        self.today = today or local_date(now_iso())
+        self.now = now_iso()
+        self.today = today or local_date(self.now)
         self.seen_guids, self.seen_keys, self.plan = set(), set(), []
 
     # ---- reads
@@ -594,72 +605,325 @@ def check_reading(shelf_items, lib, store):
     return out
 
 
+# ---------------------------------------------------------------- the Sync queue
+QUEUE_KINDS = ['Edition', 'Pages read', 'Reread or reopen', 'Edition change', 'Finish date', 'Unmatched book', 'No open Read',
+               'Book created', 'Wishlist removed', 'Gap', 'Sync run']
+QUEUE_STATUSES = ['Open', 'Answered', 'Dismissed', 'Done']
+DROP_ANSWERS = {'drop', 'skip', 'ignore', 'dismiss', 'no'}
+
+
+def queue_properties():
+    """The Sync queue schema (docs/SYNC_REVIEW.md, "Questions for Dan" plus Default applied / Proposed / Confirm)."""
+    def sel(names):
+        return {'select': {'options': [{'name': n} for n in names]}}
+    return {
+        'Question': {'title': {}},
+        'Kind': sel(QUEUE_KINDS),
+        'Status': sel(QUEUE_STATUSES),
+        'Book': {'relation': {'data_source_id': cfg('NOTION_BOOKS_DS'), 'type': 'single_property', 'single_property': {}}},
+        'Read': {'relation': {'data_source_id': cfg('NOTION_READS_DS'), 'type': 'single_property', 'single_property': {}}},
+        'Options': {'rich_text': {}},          # what Dan can answer with
+        'Proposed': {'rich_text': {}},         # the default as applied, or why an answer could not be applied
+        'Default applied': {'checkbox': {}},   # Notion already holds the default; confirming keeps it
+        'Answer': {'rich_text': {}},           # Dan's answer, by chat or in Notion
+        'Confirm': {'checkbox': {}},           # tick = keep the default
+        'Asked': {'date': {}},
+        'Resolved': {'date': {}},
+        'Key': {'rich_text': {}},              # one open row per key
+        'Event': {'rich_text': {}},            # the feed event (JSON) for pending events, the run summary for Sync run rows
+        'Goodreads id': {'rich_text': {}},
+    }
+
+
+def init_queue(notion, parent_page_id):
+    """Create the Sync queue database under the Library page; returns its data source id."""
+    ds = notion.create_database(parent_page_id, 'Sync queue', queue_properties())
+    log(f'Sync queue created: data source {ds}')
+    return ds
+
+
+def queue_norm(page):
+    p = page['properties']
+    ev = prop_text(p.get('Event'))
+    try:
+        event = json.loads(ev) if ev else None
+    except ValueError:
+        event = None
+    return {'id': page['id'], 'question': prop_text(p.get('Question')), 'kind': prop_select(p.get('Kind')), 'status': prop_select(p.get('Status')),
+            'key': prop_text(p.get('Key')), 'answer': prop_text(p.get('Answer')), 'confirm': prop_checkbox(p.get('Confirm')),
+            'default_applied': prop_checkbox(p.get('Default applied')), 'proposed': prop_text(p.get('Proposed')), 'options': prop_text(p.get('Options')),
+            'book': (prop_rel(p.get('Book')) or [None])[0], 'read': (prop_rel(p.get('Read')) or [None])[0], 'event': event,
+            'guid': prop_text(p.get('Goodreads id')), 'asked': prop_date(p.get('Asked')), 'resolved': prop_date(p.get('Resolved'))}
+
+
+class SyncQueue:
+    """Questions for Dan and the run watermark, kept in the Sync queue database (survives a throw-away checkout)."""
+
+    def __init__(self, store, ds=None):
+        self.store = store
+        self.ds = ds if ds is not None else cfg('NOTION_QUEUE_DS')
+        self.asked = []       # every question raised this run, written or not (dry runs, offline)
+        self._open = None
+
+    @property
+    def enabled(self):
+        return bool(self.store.notion and self.ds)
+
+    def open_rows(self, refresh=False):
+        if not self.enabled:
+            return []
+        if self._open is None or refresh:
+            self._open = [queue_norm(r) for r in self.store.notion.query_all(self.ds, {'property': 'Status', 'select': {'equals': 'Open'}})]
+        return self._open
+
+    def ask(self, kind, question, key, *, book=None, read=None, options='', proposed='', default_applied=False, event=None, guid=''):
+        q = {'kind': kind, 'question': question, 'key': key, 'book': book, 'read': read, 'options': options, 'proposed': proposed,
+             'default_applied': default_applied, 'event': event, 'guid': guid or (event or {}).get('guid') or '', 'asked': self.store.now}
+        if any(r['key'] == key for r in self.open_rows()) or any(a['key'] == key for a in self.asked):
+            return None  # still open from an earlier run (or already asked this run)
+        self.asked.append(q)
+        log('QUESTION', kind, '-', question)
+        if not self.enabled:
+            return None
+        props = {'Question': {'title': [{'text': {'content': question[:200]}}]}, 'Kind': {'select': {'name': kind}}, 'Status': {'select': {'name': 'Open'}},
+                 'Key': rt(key), 'Options': rt(options), 'Proposed': rt(proposed), 'Default applied': {'checkbox': default_applied},
+                 'Asked': {'date': {'start': self.store.now}}, 'Goodreads id': rt(q['guid']), 'Event': rt(json.dumps(event, ensure_ascii=False) if event else '')}
+        if book:
+            props['Book'] = {'relation': [{'id': book}]}
+        if read:
+            props['Read'] = {'relation': [{'id': read}]}
+        res = self.store._create(self.ds, props)
+        q['id'] = res.get('id')
+        if self._open is not None:
+            self._open.append(dict(q, status='Open', answer='', confirm=False))
+        return q
+
+    def resolve(self, row, status, answer=None, proposed=None):
+        props = {'Status': {'select': {'name': status}}, 'Resolved': {'date': {'start': self.store.today}}}
+        if answer is not None:
+            props['Answer'] = rt(answer)
+        if proposed is not None:
+            props['Proposed'] = rt(proposed)
+        row['status'] = status
+        log('resolved', status, '-', row['question'], ('(' + (answer or proposed or '') + ')') if (answer or proposed) else '')
+        return self.store._update(row['id'], props)
+
+    def note(self, row, proposed):
+        row['proposed'] = proposed
+        return self.store._update(row['id'], {'Proposed': rt(proposed)})
+
+    def last_run(self):
+        if not self.enabled:
+            return None
+        rows = [queue_norm(r) for r in self.store.notion.query_all(self.ds, {'and': [
+            {'property': 'Kind', 'select': {'equals': 'Sync run'}}, {'property': 'Status', 'select': {'equals': 'Done'}}]})]
+        rows.sort(key=lambda r: r['asked'] or '', reverse=True)
+        return rows[0] if rows else None
+
+    def record_run(self, summary):
+        if not self.enabled or self.store.dry_run:
+            return None
+        name = f"Sync run {self.store.now[:16].replace('T', ' ')} · {summary.get('written', 0)} logged, {summary.get('asked', 0)} asked"
+        return self.store._create(self.ds, {'Question': {'title': [{'text': {'content': name}}]}, 'Kind': {'select': {'name': 'Sync run'}},
+                                            'Status': {'select': {'name': 'Done'}}, 'Key': rt('run:' + self.store.now),
+                                            'Asked': {'date': {'start': self.store.now}}, 'Event': rt(json.dumps(summary, ensure_ascii=False))})
+
+
 # ---------------------------------------------------------------- the run
-def run_sync(notion, items, shelf, state, *, dry_run=False, offline_lib=None, now=None):
-    """Match and write one batch of feed items. `notion` is a Notion (or a test double); None with
-    `offline_lib` for an offline plan. Returns the report; the writes are in report['plan']."""
-    today = local_date(now or now_iso())
-    events = [e for e in (parse_update(it) for it in items) if e]
-    log(f'feed: {len(items)} items, {len(events)} tracked events; currently-reading shelf: {len(shelf)}')
-    new = [e for e in events if e['guid'] not in state['seen']]
-    lib = offline_lib or Library(notion)
-    if not offline_lib:
-        lib.load()
-    store = Store(notion, lib, dry_run=dry_run, today=today)
-    books_by_id = {b['id']: b for b in lib.books}
-    unmatched, written, already = [], 0, 0
-    for ev in sorted(new, key=lambda e: e['at'] or ''):
+HEX32 = re.compile(r'^[0-9a-f]{32}$')
+
+
+class Run:
+    """One sync: match events to Books and Reads, write log rows and Read changes, ask questions."""
+
+    def __init__(self, store, lib, queue, state):
+        self.store, self.lib, self.queue, self.state = store, lib, queue, state
+        self.books_by_id = {b['id']: b for b in lib.books}
+        self.written = self.already = 0
+        self.unmatched = []
+
+    # ---- lookups
+    def find_book(self, ev):
+        cached = self.state['book_cache'].get(ev['gr_book_id'] or '')
+        if cached:
+            book = self.books_by_id.get(cached)
+            if book:
+                return book, 'ok'
+            log('book cache: dropping stale entry', ev['gr_book_id'], '->', cached)
+            del self.state['book_cache'][ev['gr_book_id']]
+        return self.lib.match(ev['title'], ev['author'])
+
+    def book_from_answer(self, answer):
+        a = answer.strip()
+        if HEX32.match(a.replace('-', '')):
+            return self.books_by_id.get(a.replace('-', ''))
+        book, _ = self.lib.match(a, None)
+        if book:
+            return book
+        exact = [b for b in self.lib.books if norm(b['title']) == norm(a)]
+        return exact[0] if len(exact) == 1 else None
+
+    def read_from_answer(self, answer, book_id):
+        a = answer.strip()
+        reads = self.store.reads_for_book(book_id) if book_id else []
+        if HEX32.match(a.replace('-', '')):
+            return next((r for r in reads if r['id'] == a.replace('-', '')), None)
+        hits = [r for r in reads if r['title'].lower() == a.lower()] or [r for r in reads if r['title'].lower().startswith(a.lower())]
+        return hits[0] if len(hits) == 1 else None
+
+    # ---- one event
+    def handle(self, ev, book=None, read=None):
+        """Write one event. Returns {'status': logged | already | unmatched | no_read | skipped, ...}."""
         if ev['kind'] not in KIND_NAME:
             log('skipped', ev['kind'], ev['title'], '(not handled yet)')
-            continue
-        book, why = None, ''
-        cached = state['book_cache'].get(ev['gr_book_id'] or '')
-        if cached:
-            book = books_by_id.get(cached)
+            return {'status': 'skipped'}
+        if not book:
+            book, why = self.find_book(ev)
             if not book:
-                log('book cache: dropping stale entry', ev['gr_book_id'], '->', cached)
-                del state['book_cache'][ev['gr_book_id']]
-        if not book:
-            book, why = lib.match(ev['title'], ev['author'])
-        if not book:
-            unmatched.append({**ev, 'reason': why})
-            log('UNMATCHED', ev['kind'], ev['title'], '-', why)
-            continue
+                log('UNMATCHED', ev['kind'], ev['title'], '-', why)
+                return {'status': 'unmatched', 'why': why}
         if ev['gr_book_id']:
-            state['book_cache'][ev['gr_book_id']] = book['id']
-        read = store.open_read(book['id']) or (store.recent_read(book['id']) if ev['kind'] in ('finished', 'dnf') else None)
+            self.state['book_cache'][ev['gr_book_id']] = book['id']
         if not read:
-            unmatched.append({**ev, 'reason': f"no open Read in Notion for {book['title']}", 'book_id': book['id']})
-            log('UNMATCHED', ev['kind'], book['title'], '- no open Read in Notion')
-            continue
+            read = self.store.open_read(book['id']) or (self.store.recent_read(book['id']) if ev['kind'] in ('finished', 'dnf') else None)
+        if not read:
+            log('NO OPEN READ', ev['kind'], book['title'])
+            return {'status': 'no_read', 'book': book, 'why': f"no open Read in Notion for {book['title']}"}
         day = local_date(ev['at'])
-        if store.already_logged(ev['guid']):
-            already += 1
+        if self.store.already_logged(ev['guid']):
+            status = 'already'
             log('already in the log', ev['guid'])
-        elif store.log_exists(read['id'], KIND_NAME[ev['kind']], day, ev.get('page')):
-            already += 1
+        elif self.store.log_exists(read['id'], KIND_NAME[ev['kind']], day, ev.get('page')):
+            status = 'already'
             log('already in the log (same Read, Kind, date and Page)', ev['guid'])
         else:
-            store.create_log(ev, book, read)
-            written += 1
+            self.store.create_log(ev, book, read)
+            status = 'logged'
             log('logged', ev['kind'], book['title'], ev.get('page') or ev.get('percent') or '', '->', read['title'])
         if ev['kind'] == 'started' and day and (not read.get('started') or read.get('dates_estimated')):
             old = read.get('started')
-            note = f'Started {day}' + (f' (was estimated {old})' if old else '')
-            store.update_read(read, {'Started': {'date': {'start': day}}, 'Dates estimated': {'checkbox': False}}, note)
+            self.store.update_read(read, {'Started': {'date': {'start': day}}, 'Dates estimated': {'checkbox': False}},
+                                   f'Started {day}' + (f' (was estimated {old})' if old else ''))
             read['started'], read['dates_estimated'] = day, False
             log(f"replaced estimated Started {old} with {day} on {read['title']}" if old else f"set Started {day} on {read['title']}")
-        state['seen'][ev['guid']] = ev['at'] or now_iso()
-    if not new:
+        return {'status': status, 'book': book, 'read': read}
+
+    def count(self, res):
+        if res['status'] == 'logged':
+            self.written += 1
+        elif res['status'] == 'already':
+            self.already += 1
+
+    def question_for(self, ev, res):
+        """Queue the question an event that could not be written needs (nothing is guessed)."""
+        kind_name, day = KIND_NAME.get(ev['kind'], ev['kind']), local_date(ev['at']) or '?'
+        if res['status'] == 'unmatched':
+            who = f" by {ev['author']}" if ev.get('author') else ''
+            options = "Answer with the Notion Book's title, or 'drop'"
+            if res['why'].startswith('several'):
+                options += '. Candidates: ' + res['why'].split(': ', 1)[1]
+            self.unmatched.append({**ev, 'reason': res['why']})
+            return self.queue.ask('Unmatched book', f'Which Book is \u201c{ev["title"]}\u201d{who}? Goodreads {kind_name} on {day}: {res["why"]}',
+                                  'event:' + ev['guid'], options=options, event=ev)
+        if res['status'] == 'no_read':
+            book = res['book']
+            last = self.store.recent_read(book['id'])
+            proposed = (f"last Read in Notion: {last['title']} ({last['outcome'] or 'open'}" + (f", ended {last['ended']}" if last['ended'] else '') + ')') if last else 'no Read of this Book in Notion'
+            self.unmatched.append({**ev, 'reason': res['why'], 'book_id': book['id']})
+            return self.queue.ask('No open Read', f'Goodreads {kind_name} on \u201c{book["title"]}\u201d {day}, but Notion has no open Read',
+                                  'event:' + ev['guid'], book=book['id'], options="Answer with the Read to attach it to (its title), or 'drop'", proposed=proposed, event=ev)
+        return None
+
+    # ---- the queue
+    def apply_answers(self):
+        """Rows Dan answered or confirmed since the last run are applied first (step 2: unmatched events; later kinds in later steps)."""
+        for row in list(self.queue.open_rows()):
+            answer, confirm = (row['answer'] or '').strip(), row['confirm']
+            if not answer and not confirm:
+                continue
+            if answer.lower() in DROP_ANSWERS:
+                self.queue.resolve(row, 'Dismissed')
+                continue
+            if row['kind'] in ('Unmatched book', 'No open Read') and row['event']:
+                if not answer:
+                    self.queue.resolve(row, 'Answered', answer='confirmed: event left unlogged')
+                    continue
+                ev, book, read = row['event'], None, None
+                if row['kind'] == 'Unmatched book':
+                    book = self.book_from_answer(answer)
+                    if not book:
+                        self.queue.note(row, f'could not apply \u201c{answer}\u201d: no single Book with that title')
+                        continue
+                else:
+                    book = self.books_by_id.get(row['book'])
+                    read = self.read_from_answer(answer, row['book'])
+                    if not book or not read:
+                        self.queue.note(row, f'could not apply \u201c{answer}\u201d: no Read of that title on the Book')
+                        continue
+                res = self.handle(ev, book=book, read=read)
+                self.count(res)
+                if res['status'] in ('logged', 'already'):
+                    self.queue.resolve(row, 'Answered', proposed=f"applied: logged to {res['read']['title']}")
+                else:
+                    self.queue.note(row, f'could not apply \u201c{answer}\u201d: {res.get("why", res["status"])}')
+                continue
+            self.queue.resolve(row, 'Answered')  # confirmed or answered; nothing further to apply for this kind yet
+
+    def retry_pending(self):
+        """Events that could not be written on an earlier run are tried again; the fix (a Read, a Book) usually came by chat."""
+        for row in list(self.queue.open_rows()):
+            if row['kind'] not in ('Unmatched book', 'No open Read') or not row['event'] or row['status'] != 'Open':
+                continue
+            res = self.handle(row['event'])
+            self.count(res)
+            if res['status'] in ('logged', 'already'):
+                self.queue.resolve(row, 'Answered', answer=f"auto: logged to {res['read']['title']}")
+
+    def feed(self, events):
+        for ev in sorted(events, key=lambda e: e['at'] or ''):
+            res = self.handle(ev)
+            self.count(res)
+            if res['status'] in ('unmatched', 'no_read'):
+                self.question_for(ev, res)
+
+
+def run_sync(notion, items, shelf, state, *, dry_run=False, offline_lib=None, now=None):
+    """Match and write one batch of feed items. `notion` is a Notion (or a test double); None with
+    `offline_lib` for an offline plan. Returns the report; the writes are in report['plan']."""
+    now = now or now_iso()
+    events = [e for e in (parse_update(it) for it in items) if e]
+    log(f'feed: {len(items)} items, {len(events)} tracked events; currently-reading shelf: {len(shelf)}')
+    lib = offline_lib or Library(notion)
+    if not offline_lib:
+        lib.load()
+    store = Store(notion, lib, dry_run=dry_run, today=local_date(now))
+    store.now = now
+    queue = SyncQueue(store)
+    run = Run(store, lib, queue, state)
+    run.apply_answers()
+    run.retry_pending()
+    run.feed(events)
+    if not events:
         log('no new events')
     checks = check_reading(shelf, lib, store)
     for c in checks:
         log('CHECK', json.dumps(c, ensure_ascii=False))
-    return {'at': now or now_iso(), 'new': len(new), 'written': written, 'already': already, 'unmatched': unmatched, 'checks': checks, 'plan': store.plan}
+    summary = {'at': now, 'items': len(items), 'new': len(events), 'written': run.written, 'already': run.already,
+               'unmatched': len(run.unmatched), 'asked': len(queue.asked), 'checks': len(checks)}
+    queue.record_run(summary)
+    open_questions = [q for q in queue.open_rows(refresh=True) if q['status'] == 'Open'] if (queue.enabled and not dry_run) else list(queue.open_rows())
+    return {**summary, 'unmatched': run.unmatched, 'checks': checks, 'questions': queue.asked, 'open_questions': open_questions, 'plan': store.plan}
 
 
 def run(args):
     load_env()
+    if args.init_queue:
+        if cfg('NOTION_QUEUE_DS'):
+            sys.exit(f"NOTION_QUEUE_DS is already set ({cfg('NOTION_QUEUE_DS')}); unset it first if you really want a second queue")
+        ds = init_queue(Notion(cfg('NOTION_TOKEN', required=True)), cfg('NOTION_LIBRARY_PAGE'))
+        print(f'NOTION_QUEUE_DS={ds}')
+        print('Add that line to sync/.env and to the workflow env (and as the default in goodreads_sync.py).')
+        return 0
     state = load_state()
     urls = feed_urls() if not (args.fixture and args.shelf_fixture) else {}
     try:
@@ -674,6 +938,8 @@ def run(args):
         return 0
     offline = bool(args.offline_library)
     notion = None if offline else Notion(cfg('NOTION_TOKEN', required=True), dry_run=args.dry_run)
+    if not offline:
+        cfg('NOTION_QUEUE_DS', required=True)
     lib = None
     if offline:
         lib = Library(None)
@@ -682,18 +948,19 @@ def run(args):
     if args.plan:
         Path(args.plan).write_text(json.dumps(report['plan'], indent=1, ensure_ascii=False) + '\n', encoding='utf-8')
         log(f"{len(report['plan'])} planned write(s) saved to {args.plan}")
-    view = {'at': report['at'], 'unmatched_events': report['unmatched'], 'reading_check': report['checks']}
-    if report['unmatched'] or report['checks']:
+    view = {'at': report['at'], 'open_questions': [{k: v for k, v in q.items() if k != 'event'} for q in report['open_questions']],
+            'asked_this_run': [{k: v for k, v in q.items() if k != 'event'} for q in report['questions']],
+            'unmatched_events': report['unmatched'], 'reading_check': report['checks']}
+    if view['open_questions'] or view['asked_this_run'] or report['unmatched'] or report['checks']:
         UNMATCHED_FILE.write_text(json.dumps(view, indent=1, ensure_ascii=False), encoding='utf-8')
-        log(f"{len(report['unmatched'])} unmatched event(s), {len(report['checks'])} reading-check item(s) written to {UNMATCHED_FILE.name}")
+        log(f"{len(view['open_questions'])} open question(s), {len(report['unmatched'])} unmatched event(s), {len(report['checks'])} reading-check item(s) written to {UNMATCHED_FILE.name}")
     elif UNMATCHED_FILE.exists():
         UNMATCHED_FILE.unlink()
     if not args.dry_run and not offline:
-        state['runs'] = (state.get('runs') or [])[-30:] + [{'at': report['at'], 'new': report['new'], 'written': report['written'],
-                                                            'unmatched': len(report['unmatched']), 'checks': len(report['checks'])}]
+        state['runs'] = (state.get('runs') or [])[-30:] + [{k: report[k] for k in ('at', 'new', 'written', 'asked', 'checks')} | {'unmatched': len(report['unmatched'])}]
         save_state(state)
-    log(f"done: {report['written']} logged, {report['already']} already there, {len(report['unmatched'])} unmatched, {len(report['checks'])} check item(s)"
-        + (' (dry run, nothing saved)' if args.dry_run or offline else ''))
+    log(f"done: {report['written']} logged, {report['already']} already there, {len(report['unmatched'])} unmatched, {len(report['questions'])} question(s) asked, "
+        f"{len(report['open_questions'])} open, {len(report['checks'])} check item(s)" + (' (dry run, nothing saved)' if args.dry_run or offline else ''))
     return 0
 
 
@@ -705,6 +972,7 @@ def parse_args(argv=None):
     ap.add_argument('--shelf-fixture', help='parse this saved currently-reading shelf RSS instead of fetching')
     ap.add_argument('--offline-library', metavar='DIR', help='match against data/raw/*.json instead of Notion; implies dry run')
     ap.add_argument('--plan', metavar='FILE', help='save the planned writes as JSON (any mode)')
+    ap.add_argument('--init-queue', action='store_true', help='create the Sync queue database under the Library page and print its id')
     return ap.parse_args(argv)
 
 

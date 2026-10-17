@@ -17,7 +17,9 @@ import goodreads_sync as gs  # noqa: E402
 gs.QUIET = True
 
 FIX = HERE / 'fixtures'
+os.environ.setdefault('NOTION_QUEUE_DS', 'queue-ds-for-tests')
 BOOKS_DS, READS_DS, AUTHORS_DS, LOG_DS = gs.cfg('NOTION_BOOKS_DS'), gs.cfg('NOTION_READS_DS'), gs.cfg('NOTION_AUTHORS_DS'), gs.cfg('NOTION_LOG_DS')
+QUEUE_DS = gs.cfg('NOTION_QUEUE_DS')
 
 
 # ---------------------------------------------------------------- a fake Notion API
@@ -111,7 +113,7 @@ class FakeNotion:
 
     def __init__(self):
         self.pages, self.writes, self.dry_run, self._n = {}, [], False, 0
-        self.data_sources = {}
+        self.databases = []
 
     def seed(self, ds, props, page_id=None):
         self._n += 1
@@ -133,6 +135,10 @@ class FakeNotion:
 
     def retrieve_page(self, page_id):
         return json.loads(json.dumps(self.pages[page_id]))
+
+    def create_database(self, parent_page_id, title, properties):
+        self.databases.append({'parent': {'type': 'page_id', 'page_id': parent_page_id}, 'title': title, 'properties': properties})
+        return f'ds-{len(self.databases)}'
 
     # test helpers
     def creates(self, ds=None):
@@ -198,8 +204,19 @@ class Workspace:
             props['Page'] = {'number': page}
         return self.n.seed(LOG_DS, props)
 
+    def question(self, kind, question, key, status='Open', answer='', confirm=False, event=None, guid='', book=None, read=None, asked='2026-10-16T23:45:00-04:00', proposed='', default_applied=False):
+        props = {'Question': title(question), 'Kind': select(kind), 'Status': select(status), 'Key': text(key), 'Answer': text(answer),
+                 'Confirm': {'checkbox': confirm}, 'Event': text(json.dumps(event) if event else ''), 'Goodreads id': text(guid), 'Book': rel(book), 'Read': rel(read),
+                 'Asked': date(asked), 'Proposed': text(proposed), 'Default applied': {'checkbox': default_applied}}
+        return self.n.seed(QUEUE_DS, props)
+
+    def queue_rows(self, **flt):
+        rows = [p for p in self.n.pages.values() if p['ds'] == QUEUE_DS]
+        out = [gs.queue_norm(r) for r in rows]
+        return [r for r in out if all(r.get(k) == v for k, v in flt.items())]
+
     def sync(self, items, shelf=(), state=None, now='2026-10-17T09:00:00-04:00', **kw):
-        state = state if state is not None else {'seen': {}, 'book_cache': {}, 'runs': []}
+        state = state if state is not None else {'book_cache': {}, 'runs': []}
         return gs.run_sync(self.n, list(items), list(shelf), state, now=now, **kw), state
 
 
@@ -438,7 +455,7 @@ class LogRowTests(unittest.TestCase):
     def test_dry_run_writes_nothing_but_checks_the_log(self):
         self.ws.log('UserStatus9', self.read, self.book, 'Progress', '2026-10-16T02:30:00-04:00', page=63)
         report, _ = self.ws.sync([LATE_ITEM], dry_run=True)
-        self.assertEqual(self.ws.n.writes, [])
+        self.assertEqual(self.ws.n.writes, [])  # no log row, no Sync run row
         self.assertEqual(report['written'], 0)
         self.assertEqual(report['already'], 1)
 
@@ -453,7 +470,7 @@ class CacheTests(unittest.TestCase):
         ws = Workspace()
         b = ws.book('Lonesome Dove', 'Larry McMurtry')
         ws.read('Lonesome Dove · 2026', b)
-        state = {'seen': {}, 'book_cache': {'56346987': 'trashed-after-a-merge'}, 'runs': []}
+        state = {'book_cache': {'56346987': 'trashed-after-a-merge'}, 'runs': []}
         ws.sync([SERIES_ITEM], state=state)
         self.assertEqual(state['book_cache'].get('56346987'), b)
         self.assertEqual(len(ws.n.creates(LOG_DS)), 1)
@@ -522,10 +539,140 @@ class OfflineReplayTests(unittest.TestCase):
         lib.load_raw(raw)
         items = gs.rss_items((FIX / 'live_updates.xml').read_bytes())
         shelf = gs.rss_items((FIX / 'live_shelf_currently-reading_1.xml').read_bytes())
-        report = gs.run_sync(None, items, shelf, {'seen': {}, 'book_cache': {}, 'runs': []}, offline_lib=lib, now='2026-10-17T09:00:00-04:00')
+        report = gs.run_sync(None, items, shelf, {'book_cache': {}, 'runs': []}, offline_lib=lib, now='2026-10-17T09:00:00-04:00')
         expected = json.loads((FIX / 'expected_live.json').read_text(encoding='utf-8'))
         self.assertEqual(report['plan'], expected)
         self.assertEqual(report['unmatched'], [])
+
+
+# ---------------------------------------------------------------- the Sync queue (step 2)
+class QueueSchemaTests(unittest.TestCase):
+    def test_schema_has_the_agreed_properties(self):
+        props = gs.queue_properties()
+        for name in ('Question', 'Kind', 'Book', 'Read', 'Options', 'Proposed', 'Default applied', 'Answer', 'Confirm', 'Status', 'Asked', 'Resolved', 'Key', 'Event', 'Goodreads id'):
+            self.assertIn(name, props)
+        self.assertEqual(props['Book']['relation']['data_source_id'], BOOKS_DS)
+        self.assertEqual(props['Read']['relation']['data_source_id'], READS_DS)
+        kinds = {o['name'] for o in props['Kind']['select']['options']}
+        self.assertTrue({'Edition', 'Pages read', 'Reread or reopen', 'Unmatched book', 'No open Read', 'Gap', 'Sync run'} <= kinds)
+        self.assertEqual([o['name'] for o in props['Status']['select']['options']], ['Open', 'Answered', 'Dismissed', 'Done'])
+
+    def test_init_queue_creates_the_database_and_reports_its_id(self):
+        n = FakeNotion()
+        ds = gs.init_queue(n, 'parent-page')
+        self.assertEqual(n.databases[0]['parent'], {'type': 'page_id', 'page_id': 'parent-page'})
+        self.assertEqual(n.databases[0]['title'], 'Sync queue')
+        self.assertTrue(ds)
+
+
+class QueueTests(unittest.TestCase):
+    def setUp(self):
+        self.ws = Workspace()
+        self.book = self.ws.book('Lonesome Dove', 'Larry McMurtry')
+        self.read = self.ws.read('Lonesome Dove · 2026', self.book, started='2026-10-04')
+
+    def test_unmatched_event_becomes_an_open_question(self):
+        item = progress_item('UserStatus200', 'Mon, 12 Oct 2026 21:00:00 -0400', '999', 'A Title Notion Lacks', 10, 200)
+        report, _ = self.ws.sync([item])
+        rows = self.ws.queue_rows(kind='Unmatched book')
+        self.assertEqual(len(rows), 1)
+        q = rows[0]
+        self.assertEqual((q['status'], q['guid'], q['default_applied']), ('Open', 'UserStatus200', False))
+        self.assertEqual(q['event']['title'], 'A Title Notion Lacks')
+        self.assertIn('A Title Notion Lacks', q['question'])
+        self.assertEqual(q['asked'][:10], '2026-10-17')
+        self.assertEqual(self.ws.n.creates(LOG_DS), [])
+        self.assertEqual(len(report['open_questions']), 1)
+        self.ws.sync([item])  # the same event again: one row, not two
+        self.assertEqual(len(self.ws.queue_rows(kind='Unmatched book')), 1)
+
+    def test_ambiguous_match_lists_the_candidates(self):
+        self.ws.book('Stalin: Waiting for Hitler', 'Stephen Kotkin')
+        self.ws.book('Stalin: Paradoxes of Power', 'Stephen Kotkin')
+        item = progress_item('UserStatus201', 'Mon, 12 Oct 2026 21:00:00 -0400', '998', 'Stalin', 10, 900)
+        self.ws.sync([item])
+        q = self.ws.queue_rows(kind='Unmatched book')[0]
+        self.assertIn('Stalin: Waiting for Hitler', q['options'])
+        self.assertIn('Stalin: Paradoxes of Power', q['options'])
+
+    def test_event_with_no_open_read_is_queued(self):
+        b2 = self.ws.book('Middlemarch', 'George Eliot')
+        self.ws.read('Middlemarch · 2024', b2, started='2024-01-01', ended='2024-02-01', outcome='Finished', pages_read=800)
+        item = progress_item('UserStatus202', 'Mon, 12 Oct 2026 21:00:00 -0400', '19089', 'Middlemarch', 10, 900)
+        self.ws.sync([item])
+        q = self.ws.queue_rows(kind='No open Read')[0]
+        self.assertEqual((q['status'], q['book']), ('Open', b2))
+        self.assertEqual(self.ws.n.creates(LOG_DS), [])
+
+    def test_pending_event_is_retried_and_lands_once_the_read_exists(self):
+        ev = gs.parse_update(progress_item('UserStatus203', 'Mon, 12 Oct 2026 21:00:00 -0400', '56346987', 'Lonesome Dove', 10, 964))
+        row = self.ws.question('No open Read', 'Progress on Lonesome Dove, but no open Read', 'event:UserStatus203', event=ev, guid='UserStatus203', book=self.book)
+        self.ws.sync([])  # no feed items at all: the queue alone drives the write
+        self.assertEqual(len(self.ws.n.creates(LOG_DS)), 1)
+        q = gs.queue_norm(self.ws.n.retrieve_page(row))
+        self.assertEqual(q['status'], 'Answered')
+        self.assertTrue(q['answer'].startswith('auto:'))
+        self.assertEqual(q['resolved'], '2026-10-17')
+
+    def test_answer_naming_the_book_is_applied(self):
+        ev = gs.parse_update(progress_item('UserStatus204', 'Mon, 12 Oct 2026 21:00:00 -0400', '777', 'Lonesome Dove Unabridged Special', 20, 964))
+        row = self.ws.question('Unmatched book', 'Which Book?', 'event:UserStatus204', event=ev, guid='UserStatus204', answer='Lonesome Dove')
+        _, state = self.ws.sync([])
+        self.assertEqual(len(self.ws.n.creates(LOG_DS)), 1)
+        q = gs.queue_norm(self.ws.n.retrieve_page(row))
+        self.assertEqual(q['status'], 'Answered')
+        self.assertEqual(state['book_cache'].get('777'), self.book)
+
+    def test_answer_that_cannot_be_applied_stays_open(self):
+        ev = gs.parse_update(progress_item('UserStatus205', 'Mon, 12 Oct 2026 21:00:00 -0400', '777', 'Nothing Like It', 20, 964))
+        row = self.ws.question('Unmatched book', 'Which Book?', 'event:UserStatus205', event=ev, guid='UserStatus205', answer='Still Nothing')
+        self.ws.sync([])
+        q = gs.queue_norm(self.ws.n.retrieve_page(row))
+        self.assertEqual(q['status'], 'Open')
+        self.assertIn('could not apply', q['proposed'])
+
+    def test_drop_answer_dismisses(self):
+        ev = gs.parse_update(progress_item('UserStatus206', 'Mon, 12 Oct 2026 21:00:00 -0400', '777', 'Nothing Like It', 20, 964))
+        row = self.ws.question('Unmatched book', 'Which Book?', 'event:UserStatus206', event=ev, guid='UserStatus206', answer='drop')
+        self.ws.sync([])
+        self.assertEqual(gs.queue_norm(self.ws.n.retrieve_page(row))['status'], 'Dismissed')
+        self.assertEqual(self.ws.n.creates(LOG_DS), [])
+
+    def test_confirm_marks_a_question_answered_with_the_default_kept(self):
+        row = self.ws.question('Gap', 'Page updates between a and b may be missing', 'gap:a', confirm=True, default_applied=True, proposed='noted')
+        self.ws.sync([])
+        q = gs.queue_norm(self.ws.n.retrieve_page(row))
+        self.assertEqual((q['status'], q['resolved']), ('Answered', '2026-10-17'))
+
+    def test_unanswered_question_stays_open(self):
+        row = self.ws.question('Gap', 'Page updates between a and b may be missing', 'gap:b', default_applied=True)
+        report, _ = self.ws.sync([])
+        self.assertEqual(gs.queue_norm(self.ws.n.retrieve_page(row))['status'], 'Open')
+        self.assertEqual([q['key'] for q in report['open_questions']], ['gap:b'])
+
+    def test_sync_run_row_is_the_watermark(self):
+        self.assertIsNone(gs.SyncQueue(gs.Store(self.ws.n)).last_run())
+        self.ws.sync([LATE_ITEM], now='2026-10-16T23:45:00-04:00')
+        self.ws.sync([LATE_ITEM], now='2026-10-17T23:45:00-04:00')
+        runs = self.ws.queue_rows(kind='Sync run')
+        self.assertEqual(len(runs), 2)
+        last = gs.SyncQueue(gs.Store(self.ws.n)).last_run()
+        self.assertEqual(last['asked'], '2026-10-17T23:45:00-04:00')
+        self.assertEqual(last['status'], 'Done')
+        self.assertEqual(last['event']['new'], 1)
+
+    def test_dry_run_records_no_run_and_asks_nothing(self):
+        item = progress_item('UserStatus207', 'Mon, 12 Oct 2026 21:00:00 -0400', '999', 'A Title Notion Lacks', 10, 200)
+        report, _ = self.ws.sync([item], dry_run=True)
+        self.assertEqual(self.ws.n.writes, [])
+        self.assertEqual(len(report['questions']), 1)  # the question is in the plan, not in Notion
+
+    def test_offline_run_reports_questions_without_a_queue(self):
+        lib = small_library()
+        item = progress_item('UserStatus208', 'Mon, 12 Oct 2026 21:00:00 -0400', '999', 'A Title Notion Lacks', 10, 200)
+        report = gs.run_sync(None, [item], [], {'book_cache': {}, 'runs': []}, offline_lib=lib, now='2026-10-17T09:00:00-04:00')
+        self.assertEqual(report['questions'][0]['kind'], 'Unmatched book')
+        self.assertEqual(report['open_questions'], [])
 
 
 if __name__ == '__main__':
