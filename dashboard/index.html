@@ -47,6 +47,7 @@
 .lib .lib-chart text.lib-xl-link { cursor: pointer; text-decoration: underline; text-decoration-style: dotted; text-underline-offset: 2px; fill: var(--color-fg); }
 .lib .lib-ov { position: absolute; inset: 0; z-index: 3; background: color-mix(in srgb, var(--color-panel) 90%, transparent); backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px); border-radius: var(--cds-radius); padding: var(--cds-pad-lg); display: flex; flex-direction: column; gap: var(--cds-gap-sm); overflow: hidden; }
 .lib .lib-ov h3 { padding-right: 2.25rem; }
+.lib .lib-ov th, .lib .lib-ov td { padding: 3px 5px; }
 .lib .lib-ov .lib-note, .lib .lib-ov .lib-cap { margin: 0; }
 .lib .lib-ov-x { position: absolute; top: var(--cds-gap-sm); right: var(--cds-gap-sm); width: 28px; height: 28px; border-radius: 50%; border: 1px solid var(--color-border-line); background: var(--color-panel); color: var(--color-fg-muted); font: inherit; font-size: 18px; line-height: 1; cursor: pointer; display: flex; align-items: center; justify-content: center; padding: 0; }
 .lib .lib-ov-x:hover, .lib .lib-ov-x:focus-visible { color: var(--color-fg); }
@@ -241,7 +242,7 @@
         g.append('rect').attr('x', xs(r[x]) + off).attr('y', y1).attr('width', bw).attr('height', h).attr('rx', Math.min(4, h / 2)).attr('fill', s.color);
       });
     }
-    svg.append('g').selectAll('rect').data(rows).join('rect').attr('x', r => xs(r[x])).attr('y', 0).attr('width', xs.bandwidth()).attr('height', H).attr('fill', 'transparent').attr('cursor', opts.onClick ? 'pointer' : null)
+    svg.append('g').selectAll('rect').data(rows).join('rect').attr('x', r => xs(r[x])).attr('y', 0).attr('width', xs.bandwidth()).attr('height', H - mb).attr('fill', 'transparent').attr('cursor', opts.onClick ? 'pointer' : null)
       .on('mousemove', (ev, r) => showTip(box, ev, opts.title ? opts.title(r) : String(r[x]), series.filter(s => r[s.key] != null).map(s => [s.label, (s.fmt || yfmt)(+r[s.key]), series.length > 1 ? s.color : null]).concat(opts.extra ? opts.extra(r) : [])))
       .on('mouseleave', hideTip)
       .on('click', (ev, r) => { if (!opts.onClick) return; hideTip(); const my = d3.pointer(ev, svg.node())[1]; const seg = (segs.get(r) || []).find(s => my >= s.y1 && my <= s.y0); opts.onClick(r, series.length > 1 && seg ? seg.key : null); });
@@ -345,13 +346,13 @@
     card.classList.add('lib-has-ov'); card.appendChild(ov); x.focus({ preventScroll: true });
   }
   document.addEventListener('keydown', ev => { if (ev.key === 'Escape') root.querySelectorAll('.lib-ov').forEach(o => closeDetail(o)); });
-  const READ_COLS = [{ key: 'title' }, { key: 'author' }, { key: 'ended' }, { key: 'pages', num: true, f: fmt }, { key: 'format' }, { key: 'genres' }];
-  const READ_HEADS = ['Title', 'Author', 'Finished', 'Pages', 'Format', 'Genres'];
+  const READ_COLS = [{ key: 'title' }, { key: 'author' }, { key: 'ended' }, { key: 'pages', num: true, f: fmt }];
+  const READ_HEADS = ['Title', 'Author', 'Finished', 'Pages'];
   function readsDetail(el, title, sub, rows, extraStats, note, sources) {
     rows = rows.slice().sort((a, b) => String(b.ended).localeCompare(String(a.ended)));
-    const pages = d3.sum(rows, r => +r.pages || 0), books = new Set(rows.map(r => r.title + '|' + r.author)).size, fic = rows.filter(r => r.fiction === 'Fiction').length;
-    openDetail(el, { title, sub, sources: sources || 'reads_log',
-      stats: [['Reads', fmt(rows.length)], ['Distinct books', fmt(books)], ['Pages', fmt(pages)], ['Fiction / non-fiction', fmt(fic) + ' / ' + fmt(rows.length - fic)]].concat(extraStats || []),
+    const pages = d3.sum(rows, r => +r.pages || 0);
+    const line = [`${fmt(rows.length)} ${rows.length === 1 ? 'read' : 'reads'} · ${fmt(pages)} pages`].concat((extraStats || []).map(([k, v]) => `${k} ${v}`)).join(' · ');
+    openDetail(el, { title, sub: line, sources: sources || 'reads_log',
       rows, cols: READ_COLS, heads: READ_HEADS, rowSource: 'reads_log', rowKey: 'title,ended',
       note: note || (rows.length ? null : 'No finished reads match.') });
   }
@@ -451,7 +452,7 @@
       bars(box, v.rows, v.x, series, { height: 220, yfmt: name === 'pace' ? fmt1 : fmt, crumbs: v.crumbs, onLabel: v.onLabel, title: r => r.note ? `${spanTitle(r)} (${r.note})` : spanTitle(r), extra: name === 'booksYear' ? (r => [['Reads', fmt(r.reads)], ['Rereads', fmt(r.rereads)], ['DNF', fmt(r.dnf)]]) : (name === 'pace' ? (r => [['Days counted', fmt(r.days)], ['Pages', fmt(r.pages)]]) : null),
         onClick: (r, seg) => { const f = seg && SEG[seg] ? SEG[seg] : null; const t = spanTitle(r);
           readsDetail(box, f ? `${t} · ${SEGLABEL[seg]}` : t, r.note ? `Reads finished in ${t} (${r.note})` : `Reads finished in ${t}`,
-            reads().filter(inBucket(r)).filter(x => !f || f(x)), f ? [] : [['Pages a day', fmt1(r.pages_per_day)], ['Rereads', fmt(r.rereads)], ['DNF', fmt(r.dnf)]], null, 'reads_log other_reads'); } });
+            reads().filter(inBucket(r)).filter(x => !f || f(x)), f ? [] : [['pages a day', fmt1(r.pages_per_day)]], null, 'reads_log other_reads'); } });
     }
 
     const bm = dash.data('by_month'); { const box = chart('pagesMonth'); if (ready(box, bm)) { const v = timeView('pagesMonth', bm.data, 'month');
