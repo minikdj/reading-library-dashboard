@@ -24,7 +24,7 @@ The artifact's page is the `files/index.html` document in its own store and its 
 
 1. **Drift check first.** Read `files/index.html` from the artifact's store (`ArtifactData` get) and compare its `text` with the committed `dashboard/index.html`. If they differ, the store holds edits that aren't in git: tell me and stop rather than overwriting.
 2. Make the change in the repo and commit it with a message saying what and why.
-3. If the data should refresh: pull the four databases into `data/raw/*.json` (SQL mode, 100 rows per call, raw columns only), then `python3 pipeline/analyze.py` and check the printed sanity numbers, then `python3 pipeline/bundle.py`.
+3. If the data should refresh: pull the four databases as `docs/REFRESH.md` §1 says (SQL mode, 100 rows per call, raw columns only, pages saved verbatim, then `python3 pipeline/pull_merge.py --pulled <date> --expect …`), then `python3 pipeline/refresh.py` (analyze + bundle) and check the sanity lines in `data/out/refresh_summary.json`; it also lists the headline changes against the last commit and the datasets whose blobs need uploading.
 4. For each changed `data/out/ds/<id>.json`: upload it as an artifact asset, put the new blob id in `dashboard/datasets.json`, delete the old blob.
 5. `python3 dashboard/make_docs.py`, then one `ArtifactData` batch write of the changed documents (`files/index.html`, each changed `datasets/<id>`), pinning `if_version` from a fresh read of each.
 6. Commit the blob ids and push. Then read the dashboard's `data/users/me` `check` document once: no document means the page threw nothing.
@@ -33,7 +33,7 @@ Acceptance for any change (`docs/SPEC.md` §10): sanity numbers still match or t
 
 ## 4. What I'm likely to ask for next
 
-- A scheduled refresh (weekly pull → analyze → publish from `master`), so the artifact follows the repo without a chat.
+- A scheduled refresh (weekly pull → analyze → publish from `master`), so the artifact follows the repo without a chat. The pipeline side is done and the routine is designed in `docs/REFRESH.md`; it is waiting on my confirmation of cadence, cloud environment and connector before being created.
 - Logging reads, purchases and wishlist adds by chat (the `reading` skill), feeding the dashboard.
 - A yearly goal tile and a "what to read next" view ranked by list membership, era, length and shelf.
 - The dataset descriptions in `dashboard/datasets.json` still hard-code a few counts (`kindle_by_quarter`, `reads_log`, `by_year`); make them generic.

@@ -1,0 +1,75 @@
+{
+ "pulled": "2026-10-16",
+ "source": "Notion connector, SQL mode, 100 rows per call, ORDER BY url; raw columns only, rows verbatim",
+ "rows": {
+  "authors": 955,
+  "books": 1064,
+  "editions": 620,
+  "reads": 233
+ },
+ "columns": {
+  "authors": [
+   "url",
+   "Name",
+   "Sort name",
+   "Roles",
+   "Born",
+   "Died",
+   "Nationality",
+   "userDefined:ID"
+  ],
+  "books": [
+   "url",
+   "Title",
+   "Author",
+   "Original year",
+   "Pages",
+   "Genre",
+   "Form",
+   "Fiction",
+   "Lists",
+   "date:Wishlisted:start",
+   "Source",
+   "Genre auto",
+   "userDefined:ID"
+  ],
+  "editions": [
+   "url",
+   "Edition",
+   "Book",
+   "Translator",
+   "Publisher",
+   "Year",
+   "Format",
+   "Binding",
+   "Pages",
+   "Owned",
+   "date:Acquired:start",
+   "date:Disposed:start",
+   "Disposition",
+   "Edition statement",
+   "Source",
+   "userDefined:ID"
+  ],
+  "reads": [
+   "url",
+   "Read",
+   "Book",
+   "Edition",
+   "date:Started:start",
+   "date:Ended:start",
+   "Outcome",
+   "Pages read",
+   "Format read",
+   "Dates estimated",
+   "Edition inferred",
+   "userDefined:ID"
+  ]
+ },
+ "data_sources": {
+  "authors": "collection://f96682e9-8772-4493-abff-ec079148f1b2",
+  "books": "collection://21e3da73-9608-41f8-a857-bd226043a391",
+  "editions": "collection://d6b4c6a6-4099-4b89-b135-0fa50a918c57",
+  "reads": "collection://05439130-377c-4e0b-948e-7c1d7ffb065e"
+ }
+}

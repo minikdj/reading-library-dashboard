@@ -2,3 +2,4 @@ __pycache__/
 dashboard/docs/
 *.pyc
 .DS_Store
+data/out/refresh_summary.json

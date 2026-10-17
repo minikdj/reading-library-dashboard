@@ -1,6 +1,15 @@
 #!/usr/bin/env python3
 """Compute Dan's reading-library stats from the local Notion pulls.
-Writes tidy dataset files to /home/claude/out/ and prints sanity checks."""
+Writes tidy dataset files to data/out/ and prints sanity checks.
+
+Usage: python3 pipeline/analyze.py [--as-of YYYY-MM-DD]
+
+The "as of" date (the day the raw pull was taken) bounds the current year and
+month and the 365-day pace. It comes from, in order: --as-of, the "pulled" date
+in data/raw/meta.json (written by pipeline/pull_merge.py), else the latest Ended
+date in data/raw/reads.json with a warning. The year range, the tracking start
+and the first/last-year notes are derived from the finished reads, so nothing
+here needs editing when a new year starts."""
 import json, re, os, sys, math
 from collections import Counter, defaultdict
 from datetime import date, datetime
@@ -8,12 +17,27 @@ from datetime import date, datetime
 D = 'data/raw'
 OUT = 'data/out'
 os.makedirs(OUT, exist_ok=True)
-TODAY = date(2026, 10, 16)
 
 def load(n):
     return json.load(open(f'{D}/{n}.json'))
 
 books = load('books'); editions = load('editions'); reads = load('reads'); authors = load('authors')
+
+def as_of_date():
+    """Resolve the as-of date: --as-of flag, else data/raw/meta.json, else latest Ended."""
+    if '--as-of' in sys.argv:
+        return date.fromisoformat(sys.argv[sys.argv.index('--as-of') + 1]), '--as-of'
+    meta = f'{D}/meta.json'
+    if os.path.exists(meta):
+        m = json.load(open(meta))
+        if m.get('pulled'):
+            return date.fromisoformat(str(m['pulled'])[:10]), 'data/raw/meta.json'
+    ends = [str(r['date:Ended:start'])[:10] for r in reads if r.get('date:Ended:start')]
+    print('WARNING: no --as-of and no data/raw/meta.json; using the latest Ended date', file=sys.stderr)
+    return date.fromisoformat(max(ends)), 'latest Ended date'
+
+TODAY, today_src = as_of_date()
+print('as of', TODAY, f'({today_src})')
 
 def pid(url):
     return url[23:] if url else None  # substr(url,24) in SQL is 1-based
@@ -129,12 +153,19 @@ paused = [r for r in R.values() if r['_outcome'] == 'Paused']
 openr = [r for r in R.values() if r['_outcome'] is None]
 print('finished', len(fin), 'dnf', len(dnf), 'paused', len(paused), 'open', len(openr))
 print('finished date range', min(r['_end'] for r in fin), max(r['_end'] for r in fin))
+if max(r['_end'] for r in fin) > TODAY:
+    sys.exit(f'ERROR: a finished read ends {max(r["_end"] for r in fin)}, after the as-of date {TODAY}; pass --as-of or fix data/raw/meta.json')
+# Tracking starts on the first of the month of the first finished read; the year
+# range runs from that year to the as-of year. The first and last years are partial.
+TRACK_FROM = min(r['_end'] for r in fin).replace(day=1)
+YEARS = list(range(TRACK_FROM.year, TODAY.year + 1))
+print('tracking from', TRACK_FROM, 'years', YEARS[0], '..', YEARS[-1])
 py = Counter(); by = Counter()
 for r in fin:
     py[r['_end'].year] += r['_pages_counted']; by[r['_end'].year] += 1
 print('pages by year', dict(sorted(py.items())))
 print('reads by year', dict(sorted(by.items())))
-print('2026 finished', by[2026])
+print(f'{TODAY.year} finished', by[TODAY.year])
 own = [e for e in E.values() if e['_owned_now']]
 print('owned now by format', Counter(e.get('Format') for e in own))
 print('classic', sum(1 for b in B.values() if 'Classic' in b['_genre']), 'canonical', sum(1 for b in B.values() if 'Canonical work' in b['_genre']), 'no genre', sum(1 for b in B.values() if not b['_genre']))
@@ -153,15 +184,21 @@ def write(name, rows):
 books_read_ids = {r['_book'] for r in fin}
 # 1. per year
 rows = []
-for y in range(2021, 2027):
+for y in YEARS:
     fy = [r for r in fin if r['_end'].year == y]
     dy = [r for r in dnf if r['_end'] and r['_end'].year == y]
     distinct = len({r['_book'] for r in fy})
     rereads = sum(1 for r in fy if r['_book'] in {x['_book'] for x in fin if x['_end'] < r['_end']})
-    days_in_scope = (date(y,12,31) - date(y,8,1)).days+1 if y == 2021 else ((TODAY - date(y,1,1)).days+1 if y == 2026 else (366 if y % 4 == 0 else 365))
+    # days in scope: the year clipped to [TRACK_FROM, TODAY]
+    y_from = max(date(y, 1, 1), TRACK_FROM); y_to = min(date(y, 12, 31), TODAY)
+    days_in_scope = (y_to - y_from).days + 1
+    note = ''
+    if y == TRACK_FROM.year and y == TODAY.year: note = f'{TRACK_FROM:%b} {TRACK_FROM.day} to {TODAY:%b} {TODAY.day}'
+    elif y == TRACK_FROM.year and TRACK_FROM.month > 1: note = f'{TRACK_FROM:%b}–Dec only'
+    elif y == TODAY.year and TODAY != date(y, 12, 31): note = f'to {TODAY:%b} {TODAY.day}'
     rows.append(dict(year=y, reads=len(fy), books=distinct, pages=int(sum(r['_pages_counted'] for r in fy)), rereads=rereads, dnf=len(dy),
                      pages_per_day=round(sum(r['_pages_counted'] for r in fy)/days_in_scope, 1), days=days_in_scope,
-                     note='Aug–Dec only' if y == 2021 else ('to Oct 16' if y == 2026 else ''),
+                     note=note,
                      fiction=sum(1 for r in fy if B.get(r['_book'],{}).get('_fiction') == 'Fiction'),
                      nonfiction=sum(1 for r in fy if B.get(r['_book'],{}).get('_fiction') == 'Non-fiction'),
                      fiction_unknown=sum(1 for r in fy if not B.get(r['_book'],{}).get('_fiction')),
@@ -174,8 +211,7 @@ write('by_year', rows)
 
 # 2. per month
 rows = []
-mstart = date(2021, 8, 1)
-y, m = mstart.year, mstart.month
+y, m = TRACK_FROM.year, TRACK_FROM.month
 while (y, m) <= (TODAY.year, TODAY.month):
     fm = [r for r in fin if (r['_end'].year, r['_end'].month) == (y, m)]
     rows.append(dict(month=f'{y}-{m:02d}', reads=len(fm), pages=int(sum(r['_pages_counted'] for r in fm))))
@@ -363,7 +399,7 @@ for name, pool in [('Unread shelf', unread), ('Wishlist', wish)]:
 write('backlog_canon', rows)
 
 # 15. headline numbers
-days_tracked = (TODAY - date(2021, 8, 1)).days + 1
+days_tracked = (TODAY - TRACK_FROM).days + 1
 pages_total = int(sum(r['_pages_counted'] for r in fin))
 last365 = [r for r in fin if (TODAY - r['_end']).days < 365]
 pace_365_pages = sum(r['_pages_counted'] for r in last365) / 365
@@ -409,7 +445,7 @@ head = dict(
     kindle_acquired_top_date=str(acq_top[0]) if acq_top else None, kindle_acquired_top_count=acq_top[1] if acq_top else 0,
     unread_no_pages_paper=unread_np_by['Paper'], unread_no_pages_kindle=unread_np_by['Kindle'], unread_no_pages_both=unread_np_by['Both'],
     backlog_no_fiction=sum(1 for b in unread + wish if not b['_fiction']),
-    tracking_from=str(date(2021, 8, 1)),
+    tracking_from=str(TRACK_FROM),
     as_of=str(TODAY),
 )
 write('headline', [head])
