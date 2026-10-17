@@ -121,7 +121,7 @@ class FakeNotion:
 
     def seed(self, ds, props, page_id=None):
         self._n += 1
-        pid = page_id or f'page{self._n:04d}'
+        pid = page_id or f'{self._n:032x}'  # Notion ids are 32 hex digits; the script checks that before querying
         self.pages[pid] = {'id': pid, 'ds': ds, 'properties': _normalise(props)}
         return pid
 
