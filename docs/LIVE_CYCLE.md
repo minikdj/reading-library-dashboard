@@ -24,6 +24,8 @@ Before part 1 (once): secrets `NOTION_TOKEN` and `GOODREADS_USER_ID` added in th
 
 ## Part 3: the finish, the pages question, the stray reopen
 
+Status 2026-10-17: parts 1 and 2 passed (runs 39038307913 and 39038864765). Part 3 is not staged: Dan does not want to mark a book finished on Goodreads before he has finished it. It runs for real when *Uncovering Dinosaur Behavior* is finished; check the next nightly run against steps 3–4 below, then "confirm all".
+
 1. On Goodreads, mark that book finished.
 2. Run the workflow.
 3. Job log: `closed <Title> · 2026: Finished, Ended <today>`, `QUESTION Pages read - Finished “<Title>” on <today>; pages read = blank?`, `logged finished …`.

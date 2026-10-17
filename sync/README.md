@@ -16,10 +16,13 @@ Goodreads is where Dan marks a book started, posts his page each day and marks i
    - A Finished followed by later progress in the same feed is a stray: skipped and noted once on the Read.
    - A changed Goodreads page total on an open Read is an *Edition change* question only. A closed Read's copy is never written by the sync.
 6. **Wishlist.** "Wants to read" and fenced to-read items add Lists `Goodreads WTR` and `Wishlisted`; a missing Book is created per the runbook (Author checked by Name and Sort name, Source Goodreads, no Edition, genres left for chat) with a *Book created* question. Books tagged Goodreads WTR that are no longer on the to-read shelf are reported in the log and `unmatched.json`, never untagged.
+   A Book that came from Goodreads (this sync or the import) also gets a blank Original year or Pages filled from the to-read shelf; Dan's own Books are never touched.
 7. **Gap check.** The feed window is recorded on the Sync run row; when tonight's oldest item is newer than last night's newest, a *Gap* question says which span may be missing (`docs/GAP_FILL.md` fills it by hand). A last successful run older than two days raises one too.
 8. **Sync run row** written only after a complete, error-free run, so a partial run (a feed down, a Notion error on one event) leaves the watermark where it was and the next run picks everything up again.
 
 Every automatic change is written to the Read's Notes with the date and "from Goodreads"; a rerun on the same feed writes nothing new.
+
+**What the updates feed does not keep.** Goodreads shows only the *latest* status per book in the feed (about nine items in all). Two page updates on the same book between two runs keep only the second; the first is gone before any run sees it (seen 2026-10-17: a p.165 update replaced by p.164 seven minutes later). Started, Finished and DNF survive because the shelves recover them; only the intermediate page updates are lost, and `docs/GAP_FILL.md` fills them by hand when they matter. This is also why the job runs once a night and not after every update.
 
 ## Questions (the Sync queue, Notion under Media › Library)
 

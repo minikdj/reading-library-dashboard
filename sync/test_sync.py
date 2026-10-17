@@ -190,10 +190,11 @@ class Workspace:
     def author(self, name, sort_name=None):
         return self.n.seed(AUTHORS_DS, {'Name': title(name), 'Sort name': text(sort_name or ''), 'Roles': {'multi_select': [{'name': 'Author'}]}})
 
-    def book(self, t, author=None, lists=(), wishlisted=None, notes='', author_id=None):
+    def book(self, t, author=None, lists=(), wishlisted=None, notes='', author_id=None, source=None, year=None, pages=None):
         aid = author_id or (self.author(author) if author else None)
         pid = self.n.seed(BOOKS_DS, {'Title': title(t), 'Author': rel(aid), 'Lists': {'multi_select': [{'name': x} for x in lists]},
-                                     'Wishlisted': date(wishlisted), 'Notes': text(notes)})
+                                     'Wishlisted': date(wishlisted), 'Notes': text(notes), 'Source': select(source),
+                                     'Original year': {'number': year}, 'Pages': {'number': pages}})
         self.books[t] = pid
         return pid
 
@@ -1364,6 +1365,23 @@ class WishlistTests(unittest.TestCase):
         self.assertEqual(self.ws.n.updates(kept), [])
         self.assertEqual(self.ws.n.updates(by_id), [])
         self.assertEqual([q['kind'] for q in report['questions']], [])
+
+    def test_shelf_fills_year_and_pages_on_a_book_the_sync_created(self):
+        b = self.ws.book(ROME, 'Martin Goodman', lists=['Goodreads WTR'], wishlisted='2026-10-17', source='Goodreads', notes='GR 358646; created from Goodreads 2026-10-17')
+        shelf = [to_read_item(ROME, 'Martin Goodman', 'Thu, 15 Oct 2026 12:31:13 -0700', '358646')]
+        self.ws.sync([], to_read=shelf)
+        up = self.ws.n.updates(b)
+        self.assertEqual(len(up), 1)
+        self.assertEqual((up[0]['Original year']['number'], up[0]['Pages']['number']), (2007, 624))
+        self.assertNotIn('Lists', up[0])
+        self.ws.sync([], to_read=shelf)  # once filled, nothing more
+        self.assertEqual(len(self.ws.n.updates(b)), 1)
+
+    def test_blanks_on_dans_own_books_are_left_alone(self):
+        b = self.ws.book(ROME, 'Martin Goodman', lists=['Goodreads WTR'], wishlisted='2026-10-17', source='Manual')
+        shelf = [to_read_item(ROME, 'Martin Goodman', 'Thu, 15 Oct 2026 12:31:13 -0700', '358646')]
+        self.ws.sync([], to_read=shelf)
+        self.assertEqual(self.ws.n.updates(b), [])
 
     def test_no_removal_report_without_the_shelf(self):
         self.ws.book('A Book Dan Unshelved', 'Someone', lists=['Goodreads WTR'])

@@ -529,7 +529,8 @@ class Library:
     def add_book(self, r):
         names = [x for x in r.get('authors') or [] if x]
         book = {'id': r['id'], 'title': r['title'], 'norm': norm(r['title']), 'main': main_title(r['title']), 'authors': names,
-                'surnames': {surname(x) for x in names}, 'lists': list(r.get('lists') or []), 'wishlisted': r.get('wishlisted'), 'gr_id': r.get('gr_id')}
+                'surnames': {surname(x) for x in names}, 'lists': list(r.get('lists') or []), 'wishlisted': r.get('wishlisted'), 'gr_id': r.get('gr_id'),
+                'source': r.get('source'), 'year': r.get('year'), 'pages': r.get('pages')}
         self.books.append(book)
         return book
 
@@ -542,7 +543,8 @@ class Library:
             m = GR_IN_NOTES.search(prop_text(p.get('Notes')))
             rows.append({'id': b['id'], 'title': prop_text(p.get('Title')), 'authors': [self.authors.get(i, '') for i in prop_rel(p.get('Author'))],
                          'lists': [o['name'] for o in (p.get('Lists') or {}).get('multi_select', [])], 'wishlisted': prop_date(p.get('Wishlisted')),
-                         'gr_id': m.group(1) if m else None})
+                         'gr_id': m.group(1) if m else None, 'source': prop_select(p.get('Source')), 'year': prop_number(p.get('Original year')),
+                         'pages': prop_number(p.get('Pages'))})
         self.load_rows(rows)
         log(f'library: {len(self.books)} books, {len(self.authors)} authors')
 
@@ -555,7 +557,8 @@ class Library:
         rows = []
         for b in json.loads(rd.joinpath('books.json').read_text(encoding='utf-8')):
             rows.append({'id': pid(b['url']), 'title': b.get('Title') or '', 'authors': [self.authors.get(pid(u), '') for u in json.loads(b.get('Author') or '[]')],
-                         'lists': json.loads(b.get('Lists') or '[]'), 'wishlisted': b.get('date:Wishlisted:start') or None})
+                         'lists': json.loads(b.get('Lists') or '[]'), 'wishlisted': b.get('date:Wishlisted:start') or None,
+                         'source': b.get('Source') or None, 'year': b.get('Original year'), 'pages': b.get('Pages')})
         self.load_rows(rows)
         self.raw_editions = []
         for e in json.loads(rd.joinpath('editions.json').read_text(encoding='utf-8')):
@@ -1136,11 +1139,21 @@ class Run:
                 props['Lists'] = {'multi_select': [{'name': x} for x in book['lists'] + [WTR]]}
             if not book.get('wishlisted'):
                 props['Wishlisted'] = {'date': {'start': day}}
+            # a Book that came from Goodreads (this sync or the import) gets its blank year and pages from the shelf; Dan's own Books are left alone
+            extra = self.to_read_by_id.get(ev['gr_book_id'] or '', {})
+            year, pages = ev.get('published') or extra.get('book_published'), ev.get('pages') or extra.get('num_pages')
+            if book.get('source') == 'Goodreads':
+                if book.get('year') is None and str(year or '').lstrip('-').isdigit():
+                    props['Original year'] = {'number': int(year)}
+                if book.get('pages') is None and str(pages or '').isdigit() and int(pages) > 0:
+                    props['Pages'] = {'number': int(pages)}
             if not props:
                 return {'status': 'already', 'book': book}
             self.store.update_book(book['id'], props)
             book['lists'] = book['lists'] + ([WTR] if WTR not in book['lists'] else [])
             book['wishlisted'] = book.get('wishlisted') or day
+            book['year'] = props['Original year']['number'] if 'Original year' in props else book.get('year')
+            book['pages'] = props['Pages']['number'] if 'Pages' in props else book.get('pages')
             log('wishlisted', book['title'], '-', ', '.join(props))
             return {'status': 'tagged', 'book': book}
         # no Book: create the Author(s) and the Book (Source Goodreads, no Edition, genres left for chat)
@@ -1163,7 +1176,8 @@ class Run:
         if str(pages or '').isdigit() and int(pages) > 0:
             props['Pages'] = {'number': int(pages)}
         bid = self.store.create_book(props)
-        book = self.lib.add_book({'id': bid, 'title': ev['title'], 'authors': [author] if author else [], 'lists': [WTR], 'wishlisted': day, 'gr_id': ev.get('gr_book_id')})
+        book = self.lib.add_book({'id': bid, 'title': ev['title'], 'authors': [author] if author else [], 'lists': [WTR], 'wishlisted': day, 'gr_id': ev.get('gr_book_id'),
+                                  'source': 'Goodreads', 'year': props.get('Original year', {}).get('number'), 'pages': props.get('Pages', {}).get('number')})
         self.books_by_id[bid] = book
         if ev['gr_book_id']:
             self.state['book_cache'][ev['gr_book_id']] = bid
