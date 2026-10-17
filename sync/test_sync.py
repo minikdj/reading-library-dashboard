@@ -1402,11 +1402,14 @@ class FetchTests(unittest.TestCase):
         def fetcher(url, timeout=30):
             if 'updates_rss' in url:
                 raise OSError('down')
-            return (FIX / 'live_shelf_currently-reading_1.xml').read_bytes() if 'currently-reading' in url else b'<rss><channel></channel></rss>'
+            if 'currently-reading' in url:
+                return b'<rss><channel><item><guid>https://www.goodreads.com/review/show/1</guid><title>Lonesome Dove</title><book_id>1</book_id><author_name>Larry McMurtry</author_name></item></channel></rss>'
+            return b'<rss><channel></channel></rss>'
         os.environ['GOODREADS_USER_ID'] = '1'
         items, shelves, failed = gs.gather(gs.feed_urls(), {}, fetcher=fetcher, sleep=lambda s: None)
         self.assertIsNone(items)
         self.assertEqual(sorted(shelves), ['currently-reading', 'did-not-finish', 'read', 'to-read'])
+        self.assertEqual(len(shelves['currently-reading']), 1)
         self.assertEqual(failed, ['updates'])
 
 
