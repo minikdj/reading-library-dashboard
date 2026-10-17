@@ -1,0 +1,92 @@
+[
+{
+"pool": "Unread shelf",
+"era": "Antiquity (to 500)",
+"books": 13,
+"pages": 5382
+},
+{
+"pool": "Unread shelf",
+"era": "Medieval (500–1499)",
+"books": 15,
+"pages": 8559
+},
+{
+"pool": "Unread shelf",
+"era": "1500–1799",
+"books": 34,
+"pages": 23118
+},
+{
+"pool": "Unread shelf",
+"era": "1800s",
+"books": 54,
+"pages": 26127
+},
+{
+"pool": "Unread shelf",
+"era": "1900–1949",
+"books": 41,
+"pages": 15570
+},
+{
+"pool": "Unread shelf",
+"era": "1950–1999",
+"books": 72,
+"pages": 41347
+},
+{
+"pool": "Unread shelf",
+"era": "2000s",
+"books": 95,
+"pages": 52683
+},
+{
+"pool": "Unread shelf",
+"era": "No year",
+"books": 1,
+"pages": 992
+},
+{
+"pool": "Wishlist",
+"era": "Antiquity (to 500)",
+"books": 4,
+"pages": 1278
+},
+{
+"pool": "Wishlist",
+"era": "Medieval (500–1499)",
+"books": 2,
+"pages": 751
+},
+{
+"pool": "Wishlist",
+"era": "1500–1799",
+"books": 11,
+"pages": 4417
+},
+{
+"pool": "Wishlist",
+"era": "1800s",
+"books": 24,
+"pages": 11347
+},
+{
+"pool": "Wishlist",
+"era": "1900–1949",
+"books": 52,
+"pages": 22593
+},
+{
+"pool": "Wishlist",
+"era": "1950–1999",
+"books": 210,
+"pages": 101551
+},
+{
+"pool": "Wishlist",
+"era": "2000s",
+"books": 207,
+"pages": 100406
+}
+]

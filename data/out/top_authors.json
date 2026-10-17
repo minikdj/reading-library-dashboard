@@ -1,0 +1,152 @@
+[
+{
+"author": "Jane Austen",
+"reads": 7,
+"books": 7,
+"pages": 2199
+},
+{
+"author": "Virginia Woolf",
+"reads": 6,
+"books": 4,
+"pages": 970
+},
+{
+"author": "Fyodor Dostoevsky",
+"reads": 6,
+"books": 5,
+"pages": 2987
+},
+{
+"author": "Livy",
+"reads": 4,
+"books": 4,
+"pages": 2295
+},
+{
+"author": "Plato",
+"reads": 3,
+"books": 3,
+"pages": 796
+},
+{
+"author": "Bruce Catton",
+"reads": 3,
+"books": 3,
+"pages": 1767
+},
+{
+"author": "Taylor Jenkins Reid",
+"reads": 3,
+"books": 3,
+"pages": 1113
+},
+{
+"author": "Agatha Christie",
+"reads": 3,
+"books": 3,
+"pages": 632
+},
+{
+"author": "Colleen Hoover",
+"reads": 3,
+"books": 3,
+"pages": 1014
+},
+{
+"author": "Stephen King",
+"reads": 3,
+"books": 3,
+"pages": 1395
+},
+{
+"author": "Anonymous",
+"reads": 2,
+"books": 2,
+"pages": 448
+},
+{
+"author": "Thomas Mann",
+"reads": 2,
+"books": 2,
+"pages": 929
+},
+{
+"author": "Augustine of Hippo",
+"reads": 2,
+"books": 2,
+"pages": 1554
+},
+{
+"author": "Leo Tolstoy",
+"reads": 2,
+"books": 2,
+"pages": 2248
+},
+{
+"author": "Aristotle",
+"reads": 2,
+"books": 2,
+"pages": 377
+},
+{
+"author": "Ernest Hemingway",
+"reads": 2,
+"books": 2,
+"pages": 411
+},
+{
+"author": "Homer",
+"reads": 2,
+"books": 2,
+"pages": 1245
+},
+{
+"author": "Dante Alighieri",
+"reads": 2,
+"books": 2,
+"pages": 1022
+},
+{
+"author": "Hannah Arendt",
+"reads": 2,
+"books": 2,
+"pages": 573
+},
+{
+"author": "Raymond E. Brown",
+"reads": 2,
+"books": 2,
+"pages": 1310
+},
+{
+"author": "Nathaniel Hawthorne",
+"reads": 2,
+"books": 2,
+"pages": 544
+},
+{
+"author": "Emily Brontë",
+"reads": 2,
+"books": 1,
+"pages": 637
+},
+{
+"author": "Sarah J. Maas",
+"reads": 2,
+"books": 2,
+"pages": 1012
+},
+{
+"author": "Stephen Kotkin",
+"reads": 2,
+"books": 2,
+"pages": 1646
+},
+{
+"author": "J.R.R. Tolkien",
+"reads": 2,
+"books": 2,
+"pages": 1878
+}
+]

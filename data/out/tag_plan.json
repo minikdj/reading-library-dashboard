@@ -1,0 +1,1402 @@
+[
+ {
+  "id": "3fb1b15c8b778100bd7af56d5bae92bb",
+  "title": "Annals",
+  "author": "Tacitus",
+  "current": [],
+  "lists": [
+   "Steve 100",
+   "Western Canon"
+  ],
+  "status": "Read"
+ },
+ {
+  "id": "3fb1b15c8b778106ad2cfd9345babd24",
+  "title": "Northanger Abbey",
+  "author": "Jane Austen",
+  "current": [],
+  "lists": [
+   "Western Canon"
+  ],
+  "status": "Read"
+ },
+ {
+  "id": "3fb1b15c8b778107a6f9e27497187bd9",
+  "title": "Persuasion",
+  "author": "Jane Austen",
+  "current": [],
+  "lists": [
+   "Western Canon"
+  ],
+  "status": "Read"
+ },
+ {
+  "id": "3fb1b15c8b77810a81a3e5daf0081ec2",
+  "title": "Nicomachean Ethics",
+  "author": "Aristotle",
+  "current": [],
+  "lists": [
+   "Western Canon"
+  ],
+  "status": "Read"
+ },
+ {
+  "id": "3fb1b15c8b77810b98d7e2c031b696d1",
+  "title": "The Tale of the Heike",
+  "author": "Anonymous",
+  "current": [],
+  "lists": [
+   "Steve 100"
+  ],
+  "status": "Owned"
+ },
+ {
+  "id": "3fb1b15c8b77810bb34dd731d7730ae2",
+  "title": "Shahnameh",
+  "author": "Abolqasem Ferdowsi",
+  "current": [],
+  "lists": [
+   "Steve 100"
+  ],
+  "status": "Read"
+ },
+ {
+  "id": "3fb1b15c8b77810e9f45f42068a3db5f",
+  "title": "David Copperfield",
+  "author": "Charles Dickens",
+  "current": [],
+  "lists": [
+   "Western Canon"
+  ],
+  "status": "Owned"
+ },
+ {
+  "id": "3fb1b15c8b77810f8b5deaf4179b47f6",
+  "title": "Li Po and Tu Fu: Poems",
+  "author": "Li Po, Tu Fu",
+  "current": [],
+  "lists": [
+   "Steve 100"
+  ],
+  "status": "Owned"
+ },
+ {
+  "id": "3fb1b15c8b77810f9b33cd84aee2dbcb",
+  "title": "Sense and Sensibility",
+  "author": "Jane Austen",
+  "current": [],
+  "lists": [
+   "Western Canon"
+  ],
+  "status": "Read"
+ },
+ {
+  "id": "3fb1b15c8b77810fad59f561a0c54463",
+  "title": "The Tale of Genji",
+  "author": "Murasaki Shikibu",
+  "current": [],
+  "lists": [
+   "Steve 100"
+  ],
+  "status": "Read"
+ },
+ {
+  "id": "3fb1b15c8b778112a4d1c6c6bbbf0475",
+  "title": "The Natural History of Selborne",
+  "author": "Gilbert White",
+  "current": [],
+  "lists": [
+   "Steve 100"
+  ],
+  "status": "Read"
+ },
+ {
+  "id": "3fb1b15c8b778114bfafd0bf63ad8d9e",
+  "title": "The History of the Kings of Britain",
+  "author": "Geoffrey of Monmouth",
+  "current": [],
+  "lists": [
+   "Steve 100"
+  ],
+  "status": "Owned"
+ },
+ {
+  "id": "3fb1b15c8b778115b6d4f5bc05cd7a5f",
+  "title": "The Rāmāyana",
+  "author": "Vālmīki",
+  "current": [],
+  "lists": [
+   "Steve 100"
+  ],
+  "status": "Read"
+ },
+ {
+  "id": "3fb1b15c8b7781179cbadf7bc4f5ec83",
+  "title": "The Prince",
+  "author": "Niccolò Machiavelli",
+  "current": [],
+  "lists": [
+   "Steve 100",
+   "Western Canon"
+  ],
+  "status": "Read"
+ },
+ {
+  "id": "3fb1b15c8b778118be22e7c3f5c4026f",
+  "title": "Chronicles",
+  "author": "Jean Froissart",
+  "current": [],
+  "lists": [
+   "Steve 100"
+  ],
+  "status": "Owned"
+ },
+ {
+  "id": "3fb1b15c8b77812184fef86aeb1dd1d8",
+  "title": "Njal's Saga",
+  "author": "Anonymous",
+  "current": [],
+  "lists": [
+   "Steve 100"
+  ],
+  "status": "Owned"
+ },
+ {
+  "id": "3fb1b15c8b77812185cbea8acc811e6c",
+  "title": "Paradise Lost",
+  "author": "John Milton",
+  "current": [],
+  "lists": [
+   "Steve 100",
+   "Western Canon"
+  ],
+  "status": "Owned"
+ },
+ {
+  "id": "3fb1b15c8b778128a508fb4cfdeac324",
+  "title": "Heart of Darkness",
+  "author": "Joseph Conrad",
+  "current": [],
+  "lists": [
+   "Steve 100"
+  ],
+  "status": "Read"
+ },
+ {
+  "id": "3fb1b15c8b778129895ecbfe620a4a2c",
+  "title": "Uncle Tom's Cabin",
+  "author": "Harriet Beecher Stowe",
+  "current": [],
+  "lists": [
+   "Western Canon"
+  ],
+  "status": "Read"
+ },
+ {
+  "id": "3fb1b15c8b778129a209c3a7e3a903c4",
+  "title": "Crime & Punishment",
+  "author": "Fyodor Dostoevsky",
+  "current": [],
+  "lists": [
+   "Steve 100"
+  ],
+  "status": "Read"
+ },
+ {
+  "id": "3fb1b15c8b77812a9a6ef2709a2bdc74",
+  "title": "The Elder Edda: A Selection",
+  "author": "",
+  "current": [
+   "Goodreads WTR"
+  ],
+  "lists": [
+   "Goodreads WTR",
+   "Steve 100"
+  ],
+  "status": ""
+ },
+ {
+  "id": "3fb1b15c8b77813496d2d00539b7657e",
+  "title": "Gulliver's Travels",
+  "author": "Jonathan Swift",
+  "current": [],
+  "lists": [
+   "Western Canon"
+  ],
+  "status": "Owned"
+ },
+ {
+  "id": "3fb1b15c8b778134ac90d4649a683c92",
+  "title": "The Tenant of Wildfell Hall",
+  "author": "Anne Brontë",
+  "current": [],
+  "lists": [
+   "Western Canon"
+  ],
+  "status": "Owned"
+ },
+ {
+  "id": "3fb1b15c8b77813a876ecd523813d55f",
+  "title": "Rome and the Mediterranean: Books XXXI-XLV",
+  "author": "Livy",
+  "current": [],
+  "lists": [
+   "Western Canon"
+  ],
+  "status": "Read"
+ },
+ {
+  "id": "3fb1b15c8b77813b958bfa3b8ecdd872",
+  "title": "Walden and Civil Disobedience",
+  "author": "Henry David Thoreau",
+  "current": [],
+  "lists": [
+   "Steve 100"
+  ],
+  "status": "Owned"
+ },
+ {
+  "id": "3fb1b15c8b77813b9aa7e06f01b1fa4e",
+  "title": "Death in Venice",
+  "author": "Thomas Mann",
+  "current": [],
+  "lists": [
+   "Western Canon"
+  ],
+  "status": "Read"
+ },
+ {
+  "id": "3fb1b15c8b77813bb675c6561cbc8fc2",
+  "title": "The Faerie Queene",
+  "author": "Edmund Spenser",
+  "current": [],
+  "lists": [
+   "Western Canon"
+  ],
+  "status": "Owned"
+ },
+ {
+  "id": "3fb1b15c8b77813db8e0dafc36b16822",
+  "title": "Ring of Bright Water",
+  "author": "Gavin Maxwell",
+  "current": [
+   "Goodreads WTR"
+  ],
+  "lists": [
+   "Goodreads WTR",
+   "Steve 100"
+  ],
+  "status": "Owned"
+ },
+ {
+  "id": "3fb1b15c8b77813e88f1f15b1b2e4aad",
+  "title": "Poetics",
+  "author": "Aristotle",
+  "current": [],
+  "lists": [
+   "Western Canon"
+  ],
+  "status": "Read"
+ },
+ {
+  "id": "3fb1b15c8b77813e9d46c746bbf9c9ae",
+  "title": "The Great Gatsby",
+  "author": "F. Scott Fitzgerald",
+  "current": [],
+  "lists": [
+   "Western Canon"
+  ],
+  "status": "Read"
+ },
+ {
+  "id": "3fb1b15c8b778140ab00c04d26ac0adf",
+  "title": "The Life of Samuel Johnson",
+  "author": "James Boswell",
+  "current": [],
+  "lists": [
+   "Steve 100"
+  ],
+  "status": "Owned"
+ },
+ {
+  "id": "3fb1b15c8b778140b70dd3013cde9f1d",
+  "title": "Seven Pillars of Wisdom",
+  "author": "T.E. Lawrence",
+  "current": [],
+  "lists": [
+   "Steve 100"
+  ],
+  "status": "Read"
+ },
+ {
+  "id": "3fb1b15c8b7781419e27fb70b862ffb8",
+  "title": "Emma",
+  "author": "Jane Austen",
+  "current": [],
+  "lists": [
+   "Western Canon"
+  ],
+  "status": "Read"
+ },
+ {
+  "id": "3fb1b15c8b778141b771c1c08e1d32fd",
+  "title": "Eichmann in Jerusalem",
+  "author": "Hannah Arendt",
+  "current": [],
+  "lists": [
+   "Steve 100"
+  ],
+  "status": "Read"
+ },
+ {
+  "id": "3fb1b15c8b77814396ccc35a81b083dd",
+  "title": "The Iliad",
+  "author": "Homer",
+  "current": [],
+  "lists": [
+   "Steve 100",
+   "Western Canon"
+  ],
+  "status": "Read"
+ },
+ {
+  "id": "3fb1b15c8b778144b89ee96d0b604ba4",
+  "title": "The Histories",
+  "author": "Herodotus",
+  "current": [],
+  "lists": [
+   "Western Canon"
+  ],
+  "status": "Read"
+ },
+ {
+  "id": "3fb1b15c8b7781458942ce51b3b0be84",
+  "title": "The Complete English Poems",
+  "author": "John Donne",
+  "current": [],
+  "lists": [
+   "Western Canon"
+  ],
+  "status": "Owned"
+ },
+ {
+  "id": "3fb1b15c8b7781458d30e60152fc9d60",
+  "title": "The Decameron",
+  "author": "Giovanni Boccaccio",
+  "current": [],
+  "lists": [
+   "Steve 100",
+   "Western Canon"
+  ],
+  "status": "Read"
+ },
+ {
+  "id": "3fb1b15c8b77814697b0f7d69e76d753",
+  "title": "Hiroshima",
+  "author": "John Hersey",
+  "current": [],
+  "lists": [
+   "Steve 100"
+  ],
+  "status": "Read"
+ },
+ {
+  "id": "3fb1b15c8b7781469eecff7b4624443f",
+  "title": "The Conquest of Mexico and The Conquest of Peru",
+  "author": "William H. Prescott",
+  "current": [],
+  "lists": [
+   "Steve 100"
+  ],
+  "status": "Owned"
+ },
+ {
+  "id": "3fb1b15c8b77814792f5fcea5efbbfd1",
+  "title": "Mrs. Dalloway",
+  "author": "Virginia Woolf",
+  "current": [],
+  "lists": [
+   "Western Canon"
+  ],
+  "status": "Read"
+ },
+ {
+  "id": "3fb1b15c8b778147b71cfcad3dc74f5a",
+  "title": "Lysistrata",
+  "author": "Aristophanes",
+  "current": [],
+  "lists": [
+   "Western Canon"
+  ],
+  "status": "Read"
+ },
+ {
+  "id": "3fb1b15c8b778148b8f5f66028a2c4bb",
+  "title": "Vanity Fair",
+  "author": "William Makepeace Thackeray",
+  "current": [],
+  "lists": [
+   "Steve 100",
+   "Western Canon"
+  ],
+  "status": "Owned"
+ },
+ {
+  "id": "3fb1b15c8b778149a046fd018900f952",
+  "title": "The Secret History",
+  "author": "Procopius",
+  "current": [],
+  "lists": [
+   "Steve 100"
+  ],
+  "status": "Read"
+ },
+ {
+  "id": "3fb1b15c8b77814a87e9d2367ee20ee6",
+  "title": "Medea and Other Plays",
+  "author": "Euripides",
+  "current": [],
+  "lists": [
+   "Western Canon"
+  ],
+  "status": "Read"
+ },
+ {
+  "id": "3fb1b15c8b77814aa5eee063fc9ea4a4",
+  "title": "The Scarlet Letter",
+  "author": "Nathaniel Hawthorne",
+  "current": [],
+  "lists": [
+   "Steve 100"
+  ],
+  "status": "Read"
+ },
+ {
+  "id": "3fb1b15c8b77814b82ebf3c77afa7663",
+  "title": "Vita Nuova",
+  "author": "Dante Alighieri",
+  "current": [],
+  "lists": [
+   "Western Canon"
+  ],
+  "status": "Read"
+ },
+ {
+  "id": "3fb1b15c8b77814b9219e38bd2daef2b",
+  "title": "Poems",
+  "author": "Wang Wei",
+  "current": [],
+  "lists": [
+   "Steve 100"
+  ],
+  "status": "Read"
+ },
+ {
+  "id": "3fb1b15c8b77814ba501f1e9fbe42826",
+  "title": "The Hebrew Bible: The Prophets",
+  "author": "",
+  "current": [],
+  "lists": [
+   "Western Canon"
+  ],
+  "status": "Read"
+ },
+ {
+  "id": "3fb1b15c8b77814bbd38e3e652d531e1",
+  "title": "The Education of Henry Adams",
+  "author": "Henry Adams",
+  "current": [],
+  "lists": [
+   "Steve 100"
+  ],
+  "status": "Owned"
+ },
+ {
+  "id": "3fb1b15c8b77814ca488ea09dcdbca77",
+  "title": "Jane Eyre",
+  "author": "Charlotte Brontë",
+  "current": [],
+  "lists": [
+   "Western Canon"
+  ],
+  "status": "Read"
+ },
+ {
+  "id": "3fb1b15c8b77814f9570d5f00cb268da",
+  "title": "Moll Flanders",
+  "author": "Daniel Defoe",
+  "current": [],
+  "lists": [
+   "Western Canon"
+  ],
+  "status": "Owned"
+ },
+ {
+  "id": "3fb1b15c8b7781508cb2f0d01d961048",
+  "title": "Le Morte Darthur",
+  "author": "Thomas Malory",
+  "current": [],
+  "lists": [
+   "Western Canon"
+  ],
+  "status": "Owned"
+ },
+ {
+  "id": "3fb1b15c8b778150afb7d20b03d129d8",
+  "title": "City of God",
+  "author": "Augustine of Hippo",
+  "current": [],
+  "lists": [
+   "Western Canon"
+  ],
+  "status": "Read"
+ },
+ {
+  "id": "3fb1b15c8b778154819aea07d65c119d",
+  "title": "For Whom the Bell Tolls",
+  "author": "Ernest Hemingway",
+  "current": [],
+  "lists": [
+   "Western Canon"
+  ],
+  "status": "Owned"
+ },
+ {
+  "id": "3fb1b15c8b778156ade1fcf34d8e14e5",
+  "title": "Orlando Furioso",
+  "author": "Ludovico Ariosto",
+  "current": [],
+  "lists": [
+   "Steve 100",
+   "Western Canon"
+  ],
+  "status": "Owned"
+ },
+ {
+  "id": "3fb1b15c8b77815eb55cf88b76bf60c5",
+  "title": "The House of Mirth",
+  "author": "Edith Wharton",
+  "current": [],
+  "lists": [
+   "Western Canon"
+  ],
+  "status": "Owned"
+ },
+ {
+  "id": "3fb1b15c8b77815f8f14def862325048",
+  "title": "The Bible",
+  "author": "",
+  "current": [],
+  "lists": [
+   "Western Canon"
+  ],
+  "status": "Read"
+ },
+ {
+  "id": "3fb1b15c8b77815fad9aef754f1168f4",
+  "title": "Middlemarch",
+  "author": "George Eliot",
+  "current": [],
+  "lists": [
+   "Steve 100",
+   "Western Canon"
+  ],
+  "status": "Read"
+ },
+ {
+  "id": "3fb1b15c8b77815fb994ce98936ebb61",
+  "title": "The Demon-Haunted World",
+  "author": "Carl Sagan",
+  "current": [],
+  "lists": [
+   "Steve 100"
+  ],
+  "status": "Read"
+ },
+ {
+  "id": "3fb1b15c8b778169a82dd9fef60598c0",
+  "title": "The Outermost House",
+  "author": "Henry Beston",
+  "current": [
+   "Goodreads WTR"
+  ],
+  "lists": [
+   "Goodreads WTR",
+   "Steve 100"
+  ],
+  "status": "Owned"
+ },
+ {
+  "id": "3fb1b15c8b77816a91b3f4babae61696",
+  "title": "Bleak House",
+  "author": "Charles Dickens",
+  "current": [],
+  "lists": [
+   "Western Canon"
+  ],
+  "status": "Owned"
+ },
+ {
+  "id": "3fb1b15c8b77816b8d2dfc42f5556f04",
+  "title": "Murder Trials",
+  "author": "Cicero",
+  "current": [],
+  "lists": [
+   "Western Canon"
+  ],
+  "status": "Owned"
+ },
+ {
+  "id": "3fb1b15c8b77816b8d3aefa127ef5cf4",
+  "title": "Confessions",
+  "author": "Augustine of Hippo",
+  "current": [],
+  "lists": [
+   "Steve 100",
+   "Western Canon"
+  ],
+  "status": "Read"
+ },
+ {
+  "id": "3fb1b15c8b77816f920efbb9cfc7a672",
+  "title": "How to Grow Old: Ancient Wisdom for the Second Half of Life",
+  "author": "Cicero",
+  "current": [
+   "Goodreads WTR"
+  ],
+  "lists": [
+   "Goodreads WTR",
+   "Western Canon"
+  ],
+  "status": ""
+ },
+ {
+  "id": "3fb1b15c8b778170aedadb4716f86ab9",
+  "title": "The Autobiography of Benvenuto Cellini",
+  "author": "Benvenuto Cellini",
+  "current": [],
+  "lists": [
+   "Steve 100"
+  ],
+  "status": "Owned"
+ },
+ {
+  "id": "3fb1b15c8b7781739ff6c15fc27759bb",
+  "title": "Leaves of Grass",
+  "author": "Walt Whitman",
+  "current": [],
+  "lists": [
+   "Steve 100"
+  ],
+  "status": "Owned"
+ },
+ {
+  "id": "3fb1b15c8b778175b6f3e835265fac64",
+  "title": "The Way We Live Now",
+  "author": "Anthony Trollope",
+  "current": [
+   "Goodreads WTR"
+  ],
+  "lists": [
+   "Goodreads WTR",
+   "Steve 100"
+  ],
+  "status": ""
+ },
+ {
+  "id": "3fb1b15c8b778176a80ad5e088d49c55",
+  "title": "The Canterbury Tales",
+  "author": "Geoffrey Chaucer",
+  "current": [],
+  "lists": [
+   "Steve 100",
+   "Western Canon"
+  ],
+  "status": "Owned"
+ },
+ {
+  "id": "3fb1b15c8b7781789522c1f263d57577",
+  "title": "The Complete Essays",
+  "author": "Michel de Montaigne",
+  "current": [
+   "Goodreads WTR"
+  ],
+  "lists": [
+   "Goodreads WTR",
+   "Western Canon"
+  ],
+  "status": "Owned"
+ },
+ {
+  "id": "3fb1b15c8b77817899d6d7f79a4db1db",
+  "title": "A Vindication of the Rights of Woman",
+  "author": "Mary Wollstonecraft",
+  "current": [],
+  "lists": [
+   "Steve 100"
+  ],
+  "status": "Read"
+ },
+ {
+  "id": "3fb1b15c8b778178bd47ce5e46b2d429",
+  "title": "The Lord of the Rings",
+  "author": "J.R.R. Tolkien",
+  "current": [],
+  "lists": [
+   "Western Canon"
+  ],
+  "status": "Read"
+ },
+ {
+  "id": "3fb1b15c8b77817b9058e789bb6befaa",
+  "title": "War and Peace",
+  "author": "Leo Tolstoy",
+  "current": [],
+  "lists": [
+   "Steve 100"
+  ],
+  "status": "Read"
+ },
+ {
+  "id": "3fb1b15c8b77817dbd61fb02c1d30fd6",
+  "title": "Lady Susan, The Watsons, Sanditon",
+  "author": "Jane Austen",
+  "current": [],
+  "lists": [
+   "Western Canon"
+  ],
+  "status": "Read"
+ },
+ {
+  "id": "3fb1b15c8b77817eb21bc07088fb8ca0",
+  "title": "The Anatomy of Melancholy",
+  "author": "Robert Burton",
+  "current": [],
+  "lists": [
+   "Steve 100"
+  ],
+  "status": "Owned"
+ },
+ {
+  "id": "3fb1b15c8b77817f83dde6b56247e1d6",
+  "title": "The Early History of Rome: Books I-V",
+  "author": "Livy",
+  "current": [],
+  "lists": [
+   "Western Canon"
+  ],
+  "status": "Read"
+ },
+ {
+  "id": "3fb1b15c8b778181a276d43504104bb9",
+  "title": "Plutarch's Lives",
+  "author": "Plutarch",
+  "current": [],
+  "lists": [
+   "Western Canon"
+  ],
+  "status": "Owned"
+ },
+ {
+  "id": "3fb1b15c8b7781888b81df84b74d0d02",
+  "title": "The Landmark Thucydides",
+  "author": "Thucydides",
+  "current": [],
+  "lists": [
+   "Steve 100",
+   "Western Canon"
+  ],
+  "status": "Read"
+ },
+ {
+  "id": "3fb1b15c8b77818898e3dea0aacfa0a6",
+  "title": "The Odyssey",
+  "author": "Homer",
+  "current": [],
+  "lists": [
+   "Steve 100",
+   "Western Canon"
+  ],
+  "status": "Read"
+ },
+ {
+  "id": "3fb1b15c8b77818ab630f75c23209733",
+  "title": "The Oresteia",
+  "author": "Aeschylus",
+  "current": [],
+  "lists": [
+   "Steve 100",
+   "Western Canon"
+  ],
+  "status": "Read"
+ },
+ {
+  "id": "3fb1b15c8b77818b9506c4e34adc42d4",
+  "title": "The Holy Bible: King James Version",
+  "author": "",
+  "current": [],
+  "lists": [
+   "Western Canon"
+  ],
+  "status": "Owned"
+ },
+ {
+  "id": "3fb1b15c8b77818b9ea7fe9ec75c7b08",
+  "title": "The Divine Comedy",
+  "author": "Dante Alighieri",
+  "current": [],
+  "lists": [
+   "Steve 100",
+   "Western Canon"
+  ],
+  "status": "Read"
+ },
+ {
+  "id": "3fb1b15c8b77818d9e4efec367c3f2c7",
+  "title": "The Hebrew Bible: The Writings",
+  "author": "",
+  "current": [],
+  "lists": [
+   "Western Canon"
+  ],
+  "status": "Read"
+ },
+ {
+  "id": "3fb1b15c8b77818e9fbff99d6a3cde08",
+  "title": "The Metamorphosis",
+  "author": "Franz Kafka",
+  "current": [],
+  "lists": [
+   "Steve 100"
+  ],
+  "status": "Read"
+ },
+ {
+  "id": "3fb1b15c8b7781938165c4a85740beb5",
+  "title": "The Gulag Archipelago",
+  "author": "Aleksandr Solzhenitsyn",
+  "current": [],
+  "lists": [
+   "Steve 100"
+  ],
+  "status": "Owned"
+ },
+ {
+  "id": "3fb1b15c8b77819492c4ed657a7ddd28",
+  "title": "Mansfield Park",
+  "author": "Jane Austen",
+  "current": [],
+  "lists": [
+   "Western Canon"
+  ],
+  "status": "Read"
+ },
+ {
+  "id": "3fb1b15c8b7781959091c499ddbb873c",
+  "title": "Letters to Atticus",
+  "author": "Cicero",
+  "current": [
+   "Goodreads WTR"
+  ],
+  "lists": [
+   "Goodreads WTR",
+   "Western Canon"
+  ],
+  "status": "Owned"
+ },
+ {
+  "id": "3fb1b15c8b778196bab0f547514d18f4",
+  "title": "The Riverside Shakespeare",
+  "author": "William Shakespeare",
+  "current": [],
+  "lists": [
+   "Steve 100",
+   "Western Canon"
+  ],
+  "status": "Owned"
+ },
+ {
+  "id": "3fb1b15c8b778199b2a2e739bac0b9b9",
+  "title": "Rome and Italy: Books VI-X",
+  "author": "Livy",
+  "current": [],
+  "lists": [
+   "Western Canon"
+  ],
+  "status": "Read"
+ },
+ {
+  "id": "3fb1b15c8b77819c8168cbd302df860e",
+  "title": "Don Quixote",
+  "author": "Miguel de Cervantes",
+  "current": [],
+  "lists": [
+   "Steve 100",
+   "Western Canon"
+  ],
+  "status": "Read"
+ },
+ {
+  "id": "3fb1b15c8b77819d97c2fe018498a506",
+  "title": "Faust: Part 1",
+  "author": "Johann Wolfgang von Goethe",
+  "current": [],
+  "lists": [
+   "Steve 100"
+  ],
+  "status": "Read"
+ },
+ {
+  "id": "3fb1b15c8b77819e905adbe1151d50b0",
+  "title": "Faust: Part Two",
+  "author": "Johann Wolfgang von Goethe",
+  "current": [],
+  "lists": [
+   "Steve 100"
+  ],
+  "status": "Owned"
+ },
+ {
+  "id": "3fb1b15c8b77819eb09eccd936c34b03",
+  "title": "Beowulf",
+  "author": "Anonymous",
+  "current": [],
+  "lists": [
+   "Western Canon"
+  ],
+  "status": "Read"
+ },
+ {
+  "id": "3fb1b15c8b7781a1bf62eb3d4e8ff351",
+  "title": "The Holy Bible: English Standard Version",
+  "author": "",
+  "current": [],
+  "lists": [
+   "Western Canon"
+  ],
+  "status": "Owned"
+ },
+ {
+  "id": "3fb1b15c8b7781a486d8d052915131a6",
+  "title": "On the Origin of Species",
+  "author": "Charles Darwin",
+  "current": [],
+  "lists": [
+   "Steve 100"
+  ],
+  "status": "Read"
+ },
+ {
+  "id": "3fb1b15c8b7781a4add1dcc11a220bd3",
+  "title": "The Twelve Caesars",
+  "author": "Suetonius",
+  "current": [],
+  "lists": [
+   "Western Canon"
+  ],
+  "status": "Read"
+ },
+ {
+  "id": "3fb1b15c8b7781a5ba01fb14c3b425b7",
+  "title": "The History of the Decline and Fall of the Roman Empire",
+  "author": "Edward Gibbon",
+  "current": [],
+  "lists": [
+   "Western Canon"
+  ],
+  "status": "Owned"
+ },
+ {
+  "id": "3fb1b15c8b7781a7bb26c0823c2abede",
+  "title": "Brideshead Revisited: The Sacred and Profane Memories of Captain Charles Ryder",
+  "author": "Evelyn Waugh",
+  "current": [
+   "Goodreads WTR"
+  ],
+  "lists": [
+   "Goodreads WTR",
+   "Steve 100"
+  ],
+  "status": ""
+ },
+ {
+  "id": "3fb1b15c8b7781aaa487edee610a3fc6",
+  "title": "The Last of the Just",
+  "author": "André Schwarz-Bart",
+  "current": [],
+  "lists": [
+   "Steve 100"
+  ],
+  "status": "Owned"
+ },
+ {
+  "id": "3fb1b15c8b7781aba380f998c7a53894",
+  "title": "The Hebrew Bible: The Five Books of Moses",
+  "author": "",
+  "current": [],
+  "lists": [
+   "Western Canon"
+  ],
+  "status": "Read"
+ },
+ {
+  "id": "3fb1b15c8b7781ac8327e2d1373c361d",
+  "title": "Praise of Folly",
+  "author": "Erasmus",
+  "current": [],
+  "lists": [
+   "Western Canon"
+  ],
+  "status": "Read"
+ },
+ {
+  "id": "3fb1b15c8b7781ae9df8c729a53459af",
+  "title": "Black Lamb and Grey Falcon",
+  "author": "Rebecca West",
+  "current": [],
+  "lists": [
+   "Steve 100"
+  ],
+  "status": "Read"
+ },
+ {
+  "id": "3fb1b15c8b7781aeb729ebe8e61b7019",
+  "title": "Collected Writings",
+  "author": "Thomas Paine",
+  "current": [],
+  "lists": [
+   "Steve 100"
+  ],
+  "status": "Owned"
+ },
+ {
+  "id": "3fb1b15c8b7781b1bdb7dfe23672a3d5",
+  "title": "The Old Man and the Sea",
+  "author": "Ernest Hemingway",
+  "current": [],
+  "lists": [
+   "Western Canon"
+  ],
+  "status": "Read"
+ },
+ {
+  "id": "3fb1b15c8b7781b682cdd94584425308",
+  "title": "Pride and Prejudice",
+  "author": "Jane Austen",
+  "current": [
+   "Goodreads WTR"
+  ],
+  "lists": [
+   "Goodreads WTR",
+   "Steve 100",
+   "Western Canon"
+  ],
+  "status": "Read"
+ },
+ {
+  "id": "3fb1b15c8b7781b8bc10ca9c2b82791d",
+  "title": "A Room of One's Own",
+  "author": "Virginia Woolf",
+  "current": [],
+  "lists": [
+   "Steve 100"
+  ],
+  "status": "Read"
+ },
+ {
+  "id": "3fb1b15c8b7781b9b0bde06145aef1fe",
+  "title": "On the Nature of Things",
+  "author": "Lucretius",
+  "current": [
+   "Goodreads WTR"
+  ],
+  "lists": [
+   "Goodreads WTR",
+   "Steve 100",
+   "Western Canon"
+  ],
+  "status": ""
+ },
+ {
+  "id": "3fb1b15c8b7781bf9cb2ebdb574bbc55",
+  "title": "The Last Days of Socrates",
+  "author": "Plato",
+  "current": [],
+  "lists": [
+   "Western Canon"
+  ],
+  "status": "Read"
+ },
+ {
+  "id": "3fb1b15c8b7781c0953cf87097c9feb0",
+  "title": "The Complete Plays",
+  "author": "Christopher Marlowe",
+  "current": [],
+  "lists": [
+   "Western Canon"
+  ],
+  "status": "Owned"
+ },
+ {
+  "id": "3fb1b15c8b7781c0b516cc5276c4638a",
+  "title": "Animal Liberation",
+  "author": "Peter Singer",
+  "current": [],
+  "lists": [
+   "Steve 100"
+  ],
+  "status": "Owned"
+ },
+ {
+  "id": "3fb1b15c8b7781c3b03fc656cdf15634",
+  "title": "The Thousand and One Nights",
+  "author": "Anonymous",
+  "current": [],
+  "lists": [
+   "Steve 100"
+  ],
+  "status": "Owned"
+ },
+ {
+  "id": "3fb1b15c8b7781cd9465fc62b21d95b5",
+  "title": "Candide",
+  "author": "Voltaire",
+  "current": [],
+  "lists": [
+   "Steve 100"
+  ],
+  "status": "Owned"
+ },
+ {
+  "id": "3fb1b15c8b7781d0ad22ced7bcba6db8",
+  "title": "Metamorphoses",
+  "author": "Ovid",
+  "current": [],
+  "lists": [
+   "Western Canon"
+  ],
+  "status": "Owned"
+ },
+ {
+  "id": "3fb1b15c8b7781d292dae12720905b23",
+  "title": "Robinson Crusoe",
+  "author": "Daniel Defoe",
+  "current": [],
+  "lists": [
+   "Western Canon"
+  ],
+  "status": "Owned"
+ },
+ {
+  "id": "3fb1b15c8b7781d2a2c2d3af4a7b6c31",
+  "title": "Adventures of Huckleberry Finn",
+  "author": "Mark Twain",
+  "current": [],
+  "lists": [
+   "Steve 100",
+   "Western Canon"
+  ],
+  "status": "Read"
+ },
+ {
+  "id": "3fb1b15c8b7781d59954ed5482ddc56b",
+  "title": "Lyrical Ballads",
+  "author": "William Wordsworth, Samuel Taylor Coleridge",
+  "current": [],
+  "lists": [
+   "Steve 100"
+  ],
+  "status": "Owned"
+ },
+ {
+  "id": "3fb1b15c8b7781d788bae0b7b8fd2e40",
+  "title": "The Narrow Road to the Deep North and Other Travel Sketches",
+  "author": "Matsuo Bashō",
+  "current": [
+   "Goodreads WTR"
+  ],
+  "lists": [
+   "Goodreads WTR",
+   "Steve 100"
+  ],
+  "status": ""
+ },
+ {
+  "id": "3fb1b15c8b7781d8a338dc8c0ab45641",
+  "title": "Cré na Cille",
+  "author": "Máirtín Ó Cadhain",
+  "current": [],
+  "lists": [
+   "Steve 100"
+  ],
+  "status": "Read"
+ },
+ {
+  "id": "3fb1b15c8b7781dba490c36a338c4e1e",
+  "title": "Germinal",
+  "author": "Émile Zola",
+  "current": [],
+  "lists": [
+   "Steve 100"
+  ],
+  "status": "Owned"
+ },
+ {
+  "id": "3fb1b15c8b7781dc876cf89076e02485",
+  "title": "The War with Hannibal: Books XXI-XXX",
+  "author": "Livy",
+  "current": [],
+  "lists": [
+   "Western Canon"
+  ],
+  "status": "Read"
+ },
+ {
+  "id": "3fb1b15c8b7781dd9225c740d37a971f",
+  "title": "The Conference of the Birds",
+  "author": "Farid ud-Din Attar",
+  "current": [],
+  "lists": [
+   "Steve 100"
+  ],
+  "status": "Read"
+ },
+ {
+  "id": "3fb1b15c8b7781e28a36f37562ce5ee5",
+  "title": "The Poems",
+  "author": "Catullus",
+  "current": [],
+  "lists": [
+   "Steve 100",
+   "Western Canon"
+  ],
+  "status": "Owned"
+ },
+ {
+  "id": "3fb1b15c8b7781e29366c6353460841d",
+  "title": "The Aeneid",
+  "author": "Virgil",
+  "current": [],
+  "lists": [
+   "Western Canon"
+  ],
+  "status": "Read"
+ },
+ {
+  "id": "3fb1b15c8b7781e4804bffa3c7586209",
+  "title": "Wuthering Heights",
+  "author": "Emily Brontë",
+  "current": [],
+  "lists": [
+   "Steve 100",
+   "Western Canon"
+  ],
+  "status": "Read"
+ },
+ {
+  "id": "3fb1b15c8b7781e4ae0cd0af5168ddbc",
+  "title": "Moby Dick",
+  "author": "Herman Melville",
+  "current": [],
+  "lists": [
+   "Western Canon"
+  ],
+  "status": "Read"
+ },
+ {
+  "id": "3fb1b15c8b7781e7a487e8b3bfd12ac4",
+  "title": "The Pillow Book",
+  "author": "Sei Shōnagon",
+  "current": [],
+  "lists": [
+   "Steve 100"
+  ],
+  "status": "Owned"
+ },
+ {
+  "id": "3fb1b15c8b7781eeb5eff378ecd8118d",
+  "title": "The Three Theban Plays",
+  "author": "Sophocles",
+  "current": [],
+  "lists": [
+   "Steve 100",
+   "Western Canon"
+  ],
+  "status": "Read"
+ },
+ {
+  "id": "3fb1b15c8b7781f086abccaf7bfdec21",
+  "title": "The Sixteen Satires",
+  "author": "Juvenal",
+  "current": [],
+  "lists": [
+   "Steve 100",
+   "Western Canon"
+  ],
+  "status": "Owned"
+ },
+ {
+  "id": "3fb1b15c8b7781f29de7ce8aac2183e1",
+  "title": "The Republic",
+  "author": "Plato",
+  "current": [],
+  "lists": [
+   "Steve 100",
+   "Western Canon"
+  ],
+  "status": "Read"
+ },
+ {
+  "id": "3fb1b15c8b7781f4bf6fd4e78a4fa20e",
+  "title": "The Demons",
+  "author": "Heimito von Doderer",
+  "current": [
+   "Goodreads WTR"
+  ],
+  "lists": [
+   "Goodreads WTR",
+   "Steve 100"
+  ],
+  "status": "Owned"
+ },
+ {
+  "id": "3fb1b15c8b7781f59c3bcefefff05b6c",
+  "title": "The Sun Also Rises",
+  "author": "Ernest Hemingway",
+  "current": [],
+  "lists": [
+   "Western Canon"
+  ],
+  "status": "Read"
+ },
+ {
+  "id": "3fb1b15c8b7781f78b4fe707ca7b4ee5",
+  "title": "Symposium",
+  "author": "Plato",
+  "current": [],
+  "lists": [
+   "Western Canon"
+  ],
+  "status": "Read"
+ },
+ {
+  "id": "3fb1b15c8b7781fc91b3fb50c02c4af4",
+  "title": "The Landmark Julius Caesar",
+  "author": "Julius Caesar",
+  "current": [],
+  "lists": [
+   "Western Canon"
+  ],
+  "status": "Read"
+ },
+ {
+  "id": "3fb1b15c8b7781fc9be6c4535bd3824d",
+  "title": "The Velveteen Rabbit",
+  "author": "Margery Williams Bianco",
+  "current": [],
+  "lists": [
+   "Steve 100"
+  ],
+  "status": "Read"
+ }
+]

@@ -1,0 +1,398 @@
+<div class="lib">
+<style>
+.lib { font-family: var(--font-anthropic-sans); color: var(--color-fg); max-width: 72rem; margin-inline: auto; }
+.lib * { box-sizing: border-box; }
+.lib h1 { font-family: var(--font-anthropic-serif); font-weight: 400; font-size: var(--cds-font-size-title); margin: 0 0 var(--cds-gap-xs); }
+.lib .lib-take { color: var(--color-fg-muted); font-size: var(--cds-font-size-body); margin: 0 0 var(--cds-gap-lg); }
+.lib .lib-take b { font-weight: var(--cds-font-weight-medium); color: var(--color-fg); }
+.lib h2 { font-size: var(--cds-font-size-heading); font-weight: var(--cds-font-weight-medium); margin: var(--cds-gap-xl) 0 var(--cds-gap-sm); padding-top: var(--cds-gap-md); border-top: 1px solid var(--color-border-line); }
+.lib .lib-sub { color: var(--color-fg-muted); font-size: var(--cds-font-size-caption); margin: 0 0 var(--cds-gap-md); }
+.lib .lib-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 20rem), 1fr)); gap: var(--cds-gap-md); margin-bottom: var(--cds-gap-md); }
+.lib .lib-grid.lib-wide { grid-template-columns: 1fr; }
+.lib .lib-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 10rem), 1fr)); gap: var(--cds-gap-md); margin-bottom: var(--cds-gap-md); }
+.lib .lib-card { background: var(--color-panel); border: 1px solid var(--color-border-line); border-radius: var(--cds-radius); padding: var(--cds-pad-lg); min-width: 0; position: relative; }
+.lib .lib-card h3 { font-size: var(--cds-font-size-heading); font-weight: var(--cds-font-weight-medium); margin: 0 0 2px; }
+.lib .lib-note { color: var(--color-fg-muted); font-size: var(--cds-font-size-caption); margin: 0 0 var(--cds-gap-sm); }
+.lib .lib-cap { color: var(--color-fg-muted); font-size: var(--cds-font-size-caption); margin: var(--cds-gap-sm) 0 0; }
+.lib .lib-tile .lib-k { color: var(--color-fg-muted); font-size: var(--cds-font-size-caption); margin-bottom: var(--cds-gap-xs); }
+.lib .lib-tile .lib-v { font-family: var(--font-anthropic-serif); font-weight: 400; font-size: 2rem; line-height: 1.1; }
+.lib .lib-tile .lib-s { color: var(--color-fg-muted); font-size: var(--cds-font-size-caption); margin-top: var(--cds-gap-xs); }
+.lib .lib-chart { position: relative; width: 100%; }
+.lib .lib-chart svg { display: block; width: 100%; height: auto; overflow: visible; }
+.lib .lib-chart text { font-family: var(--font-anthropic-sans); }
+.lib .lib-legend { display: flex; flex-wrap: wrap; gap: var(--cds-gap-xs) var(--cds-gap-md); font-size: var(--cds-font-size-caption); color: var(--color-fg-muted); margin: 0 0 var(--cds-gap-xs); }
+.lib .lib-legend span::before { content: ''; display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 5px; vertical-align: -1px; background: var(--sw); }
+.lib .lib-tip { position: absolute; z-index: 2; background: var(--cds-surface-popover); border: 1px solid var(--cds-border); border-radius: var(--cds-radius); box-shadow: var(--cds-shadow-popover); padding: var(--cds-pad-xs) var(--cds-pad-sm); font-size: var(--cds-font-size-caption); pointer-events: none; white-space: nowrap; display: none; }
+.lib .lib-tip .lib-th { color: var(--cds-text-secondary); margin-bottom: 2px; }
+.lib .lib-tip .lib-tr { display: flex; gap: 6px; align-items: center; }
+.lib .lib-tip .lib-tr i { width: 8px; height: 8px; border-radius: 2px; display: inline-block; background: var(--sw); }
+.lib .lib-tip .lib-tr b { margin-left: auto; font-weight: var(--cds-font-weight-medium); font-variant-numeric: tabular-nums; }
+.lib table { width: 100%; border-collapse: collapse; font-size: var(--cds-font-size-caption); }
+.lib th, .lib td { text-align: left; padding: 5px 6px; border-bottom: 1px solid var(--color-border-line); vertical-align: top; }
+.lib th { color: var(--color-fg-muted); font-weight: var(--cds-font-weight-medium); position: sticky; top: 0; background: var(--color-panel); }
+.lib th button { all: unset; cursor: pointer; }
+.lib td.lib-n, .lib th.lib-n { text-align: right; font-variant-numeric: tabular-nums; }
+.lib .lib-scroll { max-height: 28rem; overflow: auto; }
+.lib input.lib-search { font: inherit; font-size: var(--cds-font-size-caption); padding: 4px 8px; border: 1px solid var(--cds-border); border-radius: var(--cds-radius); background: var(--color-bg); color: var(--color-fg); margin-bottom: var(--cds-gap-sm); width: min(100%, 20rem); }
+.lib .lib-fail { display: flex; align-items: center; justify-content: center; gap: 6px; color: var(--color-fg-muted); font-size: var(--cds-font-size-caption); min-height: 6rem; }
+.lib .lib-fail::before { content: ''; width: .375rem; height: .375rem; border-radius: 50%; background: var(--color-bad); }
+.lib [data-dash-source-state=empty] { color: transparent; }
+.lib [data-dash-source-state=refreshing] { opacity: .5; transition: opacity var(--cds-dur-slow); }
+.lib .lib-bar-label { fill: var(--color-fg); font-size: var(--cds-font-size-caption); }
+</style>
+
+<h1 id="top">Reading library</h1>
+<p class="lib-take" id="takeaway">Since tracking began in Aug 2021: <b data-source="headline" data-field="books_read" data-row="0">—</b> books read in <b data-source="headline" data-field="reads_finished" data-row="0">—</b> reads and <b data-source="headline" data-field="pages_read" data-row="0">—</b> pages. Over the last 365 days the pace was <b data-source="headline" data-field="pages_per_day_365" data-row="0">—</b> pages a day; at that pace the <b data-source="headline" data-field="backlog_books" data-row="0">—</b> books on the unread shelf and wishlist would take about <b data-source="headline" data-field="backlog_years_at_pace" data-row="0">—</b> years.</p>
+
+<div class="lib-tiles" id="tiles">
+  <div class="lib-card lib-tile"><div class="lib-k">Books read</div><div class="lib-v dash-skeleton" data-source="headline" data-field="books_read" data-row="0">—</div><div class="lib-s"><span data-source="headline" data-field="reads_finished" data-row="0">—</span> reads · <span data-source="headline" data-field="rereads" data-row="0">—</span> rereads</div></div>
+  <div class="lib-card lib-tile"><div class="lib-k">Pages read</div><div class="lib-v dash-skeleton" data-source="headline" data-field="pages_read" data-row="0">—</div><div class="lib-s"><span data-source="headline" data-field="pages_per_day_all" data-row="0">—</span> a day since Aug 2021</div></div>
+  <div class="lib-card lib-tile"><div class="lib-k">Pace, last 365 days</div><div class="lib-v dash-skeleton" data-source="headline" data-field="pages_per_day_365" data-row="0">—</div><div class="lib-s">pages a day · <span data-source="headline" data-field="reads_last_365" data-row="0">—</span> books finished</div></div>
+  <div class="lib-card lib-tile"><div class="lib-k">Copies owned</div><div class="lib-v dash-skeleton" data-source="headline" data-field="owned_copies" data-row="0">—</div><div class="lib-s"><span data-source="headline" data-field="owned_paper" data-row="0">—</span> paper · <span data-source="headline" data-field="owned_kindle" data-row="0">—</span> Kindle</div></div>
+  <div class="lib-card lib-tile"><div class="lib-k">Shelf read</div><div class="lib-v dash-skeleton" data-source="headline" data-field="shelf_read_pct" data-row="0">—</div><div class="lib-s">of <span data-source="headline" data-field="owned_books" data-row="0">—</span> owned works read or in progress</div></div>
+  <div class="lib-card lib-tile"><div class="lib-k">Backlog</div><div class="lib-v dash-skeleton" data-source="headline" data-field="backlog_books" data-row="0">—</div><div class="lib-s">books · about <span data-source="headline" data-field="backlog_years_at_pace" data-row="0">—</span> years at current pace</div></div>
+</div>
+<p class="lib-sub">Snapshot of the Notion Library databases (Books, Editions, Reads, Authors) as of <span data-source="headline" data-field="as_of" data-row="0">—</span>. "Read" means a Read with Outcome = Finished; a DNF never counts. Pages per read are the Pages read field (indexes and appendices skipped), else the copy's or the book's page count.</p>
+
+<h2 id="read">What I've read</h2>
+<p class="lib-sub">History starts in Aug 2021; 2021 is five months and 2026 runs to Oct 16.</p>
+<div class="lib-grid">
+  <div class="lib-card" id="c-books-year"><h3>Books finished per year</h3><p class="lib-note">Fiction and non-fiction, by the year the read ended</p><div class="lib-chart dash-skeleton" data-source="by_year" data-chart="booksYear" style="min-height:240px"></div><p class="lib-cap">Every finished read has a Fiction value. Rereads count each time.</p></div>
+  <div class="lib-card" id="c-pages-year"><h3>Pages per year</h3><p class="lib-note">Pages counted across finished reads</p><div class="lib-chart dash-skeleton" data-source="by_year" data-chart="pagesYear" style="min-height:240px"></div><p class="lib-cap">All 230 finished reads carry a Pages read value, so no read is missing from the totals.</p></div>
+</div>
+<div class="lib-grid lib-wide">
+  <div class="lib-card" id="c-pages-month"><h3>Pages per month</h3><p class="lib-note">Pages of reads finished in each month, Aug 2021 to Oct 2026</p><div class="lib-chart dash-skeleton" data-source="by_month" data-chart="pagesMonth" style="min-height:220px"></div><p class="lib-cap">A long book lands entirely in the month it was finished, so single months spike.</p></div>
+</div>
+<div class="lib-grid">
+  <div class="lib-card" id="c-pace"><h3>Pace: pages per calendar day</h3><p class="lib-note">Pages finished in the year ÷ days in the year tracked</p><div class="lib-chart dash-skeleton" data-source="by_year" data-chart="pace" style="min-height:220px"></div><p class="lib-cap">Per-read speed can't be computed: Dates estimated is ✓ on 229 of 230 finished reads and the remaining one has no Started date, so this uses calendar time instead.</p></div>
+  <div class="lib-card" id="c-format-year"><h3>Format read, per year</h3><p class="lib-note">The linked edition's format, else Format read</p><div class="lib-chart dash-skeleton" data-source="by_year" data-chart="formatYear" style="min-height:220px"></div><p class="lib-cap">Every finished read has a format; 42 library reads default to Kindle per the runbook. No audio reads recorded.</p></div>
+</div>
+<div class="lib-grid">
+  <div class="lib-card" id="c-canon-year"><h3>Canonical reading, per year</h3><p class="lib-note">Classic (Greek and Roman antiquity), Canonical work (pre-1970 canon), other</p><div class="lib-chart dash-skeleton" data-source="by_year" data-chart="canonYear" style="min-height:220px"></div><p class="lib-cap">Genre tags on 925 of 1,064 books are Claude's (Genre auto ✓), not yet confirmed.</p></div>
+</div>
+<div class="lib-grid">
+  <div class="lib-card" id="c-genres-year-f"><h3>Fiction genres over time</h3><p class="lib-note">Finished fiction reads per year, top six genres, the rest folded into Other</p><div class="lib-chart dash-skeleton" data-source="genres_by_year" data-chart="genresYearF" style="min-height:220px"></div><p class="lib-cap">A read tagged with two genres counts once in each. "Literary fiction" is the catch-all for canonical novels with no sharper genre. Canon tags are left out.</p></div>
+  <div class="lib-card" id="c-genres-year-n"><h3>Non-fiction genres over time</h3><p class="lib-note">Finished non-fiction reads per year, top six genres, the rest folded into Other</p><div class="lib-chart dash-skeleton" data-source="genres_by_year" data-chart="genresYearN" style="min-height:220px"></div><p class="lib-cap">Same counting as the fiction chart. Genre tags on 925 of 1,064 books are Claude's, not yet confirmed.</p></div>
+</div>
+<div class="lib-grid">
+  <div class="lib-card" id="c-genres-f"><h3>Fiction genres read</h3><p class="lib-note">Finished fiction reads per content genre, all time</p><div class="lib-chart dash-skeleton" data-source="genres_read" data-chart="genresReadF"></div><p class="lib-cap">Top 12; hover for distinct books and pages. A read with two genres counts in each.</p></div>
+  <div class="lib-card" id="c-genres-n"><h3>Non-fiction genres read</h3><p class="lib-note">Finished non-fiction reads per content genre, all time</p><div class="lib-chart dash-skeleton" data-source="genres_read" data-chart="genresReadN"></div><p class="lib-cap">Top 12. Philosophy, Religion, Satire and a few others appear on both sides because the Fiction value belongs to the book, not the genre.</p></div>
+</div>
+<div class="lib-grid">
+  <div class="lib-card" id="c-forms"><h3>Forms read</h3><p class="lib-note">Distinct books read, by Form</p><div class="lib-chart dash-skeleton" data-source="forms_read" data-chart="forms"></div><p class="lib-cap">One Form per book.</p></div>
+</div>
+<div class="lib-grid">
+  <div class="lib-card" id="c-centuries"><h3>When what I've read was written</h3><p class="lib-note">Distinct books read, by century of the Original year</p><div class="lib-chart dash-skeleton" data-source="centuries_read" data-chart="centuries" style="min-height:220px"></div><p class="lib-cap">Original year = first publication in the original language; collections are dated by their latest work. Books with no year are left out.</p></div>
+  <div class="lib-card" id="c-eras"><h3>Eras: read, unread shelf and wishlist</h3><p class="lib-note">Books by era, compared across what's been read and what's waiting</p><div class="lib-chart dash-skeleton" data-source="eras_by_status" data-chart="eras"></div><p class="lib-cap">Unread = owned and never read; Wishlist = not owned, not read.</p></div>
+</div>
+<div class="lib-grid">
+  <div class="lib-card" id="c-authors"><h3>Most-read authors</h3><p class="lib-note">Finished reads per author (rereads count), top 15</p><div class="lib-chart dash-skeleton" data-source="top_authors" data-chart="authors"></div><p class="lib-cap">Hover for distinct books and pages. Co-authored books count for each author.</p></div>
+  <div class="lib-card" id="c-translators"><h3>Translators</h3><p class="lib-note">Finished reads whose linked edition names a translator or editor, top 10</p><div class="lib-chart dash-skeleton" data-source="top_translators" data-chart="translators"></div><p class="lib-cap">Only 63 of 230 finished reads link an edition with a translator; 42 reads link no edition at all, so translated library books are undercounted.</p></div>
+</div>
+<div class="lib-grid">
+  <div class="lib-card" id="c-longest"><h3>Longest reads</h3><p class="lib-note">By pages counted, top 15</p><div class="lib-scroll"><table data-source="reads_log" data-row-key="title,ended" data-table="longest"><thead><tr><th data-field="title">Title</th><th data-field="author">Author</th><th data-field="year" class="lib-n">Year</th><th data-field="pages" class="lib-n">Pages</th></tr></thead><tbody></tbody></table></div><p class="lib-cap">Days per read aren't shown because nearly every Started date is an estimate.</p></div>
+  <div class="lib-card" id="c-rereads"><h3>Rereads, DNFs and reading now</h3><p class="lib-note">Second and later reads of a work; the two abandoned reads; the open read</p>
+    <table data-source="reads_log" data-row-key="title,ended" data-table="rereads"><thead><tr><th data-field="title">Reread</th><th data-field="ended">Finished</th><th data-field="format">Format</th></tr></thead><tbody></tbody></table>
+    <table data-source="other_reads" data-row-key="title" data-table="other" style="margin-top: var(--cds-gap-md)"><thead><tr><th data-field="kind">Status</th><th data-field="title">Title</th><th data-field="pages_read" class="lib-n">Pages read</th><th data-field="started">Started</th><th data-field="ended">Stopped</th></tr></thead><tbody></tbody></table>
+    <p class="lib-cap">DNF pages are how far the read got; they're never added to the read totals.</p></div>
+</div>
+<div class="lib-grid lib-wide">
+  <div class="lib-card" id="c-all"><h3>Every finished read</h3><p class="lib-note">The event log: sort by a column, or search by title, author, genre or translator</p>
+    <input class="lib-search" type="search" placeholder="Search reads" aria-label="Search reads">
+    <div class="lib-scroll"><table data-source="reads_log" data-row-key="title,ended" data-table="all"><thead><tr>
+      <th data-field="title"><button>Title</button></th><th data-field="author"><button>Author</button></th><th data-field="ended"><button>Finished</button></th><th data-field="pages" class="lib-n"><button>Pages</button></th><th data-field="format"><button>Format</button></th><th data-field="fiction"><button>Fiction</button></th><th data-field="genres"><button>Genres</button></th><th data-field="original_year" class="lib-n"><button>Written</button></th><th data-field="translator"><button>Translator</button></th>
+    </tr></thead><tbody></tbody></table></div></div>
+</div>
+
+<h2 id="own">What I own</h2>
+<p class="lib-sub">Owned now = an Edition with Owned ✓ and no Disposed date. Editions are copies, so a work owned on paper and Kindle counts twice here and once in the shelf chart.</p>
+<div class="lib-grid">
+  <div class="lib-card" id="c-copies"><h3>Copies by format and binding</h3><p class="lib-note">Owned copies; binding applies to paper only</p><div class="lib-chart dash-skeleton" data-source="copies_by" data-chart="copies"></div><p class="lib-cap">Binding is recorded on all 400 paper copies. No audiobooks and no disposed copies are recorded.</p></div>
+  <div class="lib-card" id="c-publishers"><h3>Publishers</h3><p class="lib-note">Owned copies per publisher or imprint, top 20</p><div class="lib-chart dash-skeleton" data-source="copies_by" data-chart="publishers"></div><p class="lib-cap">210 distinct publishers across 601 copies; every copy has one.</p></div>
+</div>
+<div class="lib-grid">
+  <div class="lib-card" id="c-shelf"><h3>How much of my shelf I've read</h3><p class="lib-note">Owned works by the formats held, split by status</p><div class="lib-chart dash-skeleton" data-source="shelf_status" data-chart="shelf"></div><p class="lib-cap">"Both" = a paper and a Kindle copy of the same work. Hover for pages; 41 unread works have no page count.</p></div>
+  <div class="lib-card" id="c-unread-pages"><h3>Unread pages on the shelf</h3><p class="lib-note">Pages of unread owned works, by format held</p><div class="lib-chart dash-skeleton" data-source="shelf_status" data-chart="shelfPages"></div><p class="lib-cap">Counts only works with a page count (22 paper-only, 16 Kindle-only and 3 both-format unread works lack one).</p></div>
+</div>
+<div class="lib-grid">
+  <div class="lib-card" id="c-kindle-q"><h3>Kindle buying, by quarter</h3><p class="lib-note">Kindle copies by Acquired date</p><div class="lib-chart dash-skeleton" data-source="kindle_by_quarter" data-chart="kindleQ" style="min-height:220px"></div><p class="lib-cap">Acquired dates exist for Kindle copies only (207 of 212), so there's no paper timeline. 52 copies share the date 2023-11-15, which makes the first quarter.</p></div>
+  <div class="lib-card" id="c-kindle-read"><h3>Kindle copies read, by year bought</h3><p class="lib-note">Whether the work has since been read (or is being read)</p><div class="lib-chart dash-skeleton" data-source="kindle_read_by_year" data-chart="kindleRead" style="min-height:220px"></div><p class="lib-cap">A Kindle copy counts as read if its work has any finished read, in any format.</p></div>
+</div>
+
+<h2 id="unread">What I haven't read</h2>
+<p class="lib-sub">Two pools: the unread shelf (owned, never read) and the wishlist (Goodreads want-to-read books not owned and not read).</p>
+<div class="lib-tiles" id="backlog-tiles">
+  <div class="lib-card lib-tile"><div class="lib-k">Unread shelf</div><div class="lib-v dash-skeleton" data-source="headline" data-field="owned_unread" data-row="0">—</div><div class="lib-s">books · <span data-source="headline" data-field="unread_pages" data-row="0">—</span> pages counted</div></div>
+  <div class="lib-card lib-tile"><div class="lib-k">Unread shelf at current pace</div><div class="lib-v dash-skeleton" data-source="headline" data-field="unread_years_at_pace" data-row="0">—</div><div class="lib-s">years, with <span data-source="headline" data-field="unread_no_pages" data-row="0">—</span> uncounted books at the median <span data-source="headline" data-field="median_unread_pages" data-row="0">—</span> pages</div></div>
+  <div class="lib-card lib-tile"><div class="lib-k">Wishlist</div><div class="lib-v dash-skeleton" data-source="headline" data-field="wishlist_books" data-row="0">—</div><div class="lib-s">books · <span data-source="headline" data-field="wishlist_pages" data-row="0">—</span> pages counted</div></div>
+  <div class="lib-card lib-tile"><div class="lib-k">Wishlist at current pace</div><div class="lib-v dash-skeleton" data-source="headline" data-field="wishlist_years_at_pace" data-row="0">—</div><div class="lib-s">years, with <span data-source="headline" data-field="wishlist_no_pages" data-row="0">—</span> uncounted book at the median <span data-source="headline" data-field="median_wish_pages" data-row="0">—</span> pages</div></div>
+</div>
+<p class="lib-sub">"Current pace" is the last 365 days: <span data-source="headline" data-field="pages_per_day_365" data-row="0">—</span> pages a day.</p>
+<div class="lib-grid">
+  <div class="lib-card" id="c-backlog-genre-f"><h3>Backlog: fiction genres</h3><p class="lib-note">Unread shelf vs wishlist, top 12 genres among fiction books</p><div class="lib-chart dash-skeleton" data-source="backlog" data-chart="backlogGenreF"></div><p class="lib-cap">A book with two genres counts in each. Hover for pages.</p></div>
+  <div class="lib-card" id="c-backlog-genre-n"><h3>Backlog: non-fiction genres</h3><p class="lib-note">Unread shelf vs wishlist, top 12 genres among non-fiction books</p><div class="lib-chart dash-skeleton" data-source="backlog" data-chart="backlogGenreN"></div><p class="lib-cap">The 7 books with no Fiction value are left out of both genre charts.</p></div>
+</div>
+<div class="lib-grid">
+  <div class="lib-card" id="c-backlog-era"><h3>Backlog by era</h3><p class="lib-note">Unread shelf vs wishlist, by Original year</p><div class="lib-chart dash-skeleton" data-source="backlog" data-chart="backlogEra"></div><p class="lib-cap">"No year" holds books with no Original year.</p></div>
+</div>
+<div class="lib-grid">
+  <div class="lib-card" id="c-backlog-length"><h3>Backlog by length</h3><p class="lib-note">Unread shelf vs wishlist, by page count</p><div class="lib-chart dash-skeleton" data-source="backlog" data-chart="backlogLength"></div><p class="lib-cap">Page counts come from the Book, filled from Open Library on most works.</p></div>
+  <div class="lib-card" id="c-backlog-canon"><h3>Backlog: canon</h3><p class="lib-note">How much of what's waiting is Classic or a Canonical work</p><div class="lib-chart dash-skeleton" data-source="backlog" data-chart="backlogCanon"></div><p class="lib-cap">Of the 37 Classic and 287 Canonical work books in the library, 23 and 81 have been read.</p></div>
+</div>
+</div>
+
+<script>
+(() => {
+  const root = document.querySelector('.lib');
+  const fmt = d3.format(',');
+  const fmt1 = d3.format(',.1f');
+  const pct = d3.format('.0%');
+  const C = dash.colors;
+  const COL = { fiction: C[0], nonfiction: C[1], paper: C[2], kindle: C[3], classic: C[4], canonical: C[5], other: 'var(--cds-chart-muted)', unread: C[6], wishlist: C[7], read: C[0], reading: C[5], abandoned: 'var(--cds-chart-muted)' };
+  const GENRE = {};
+
+  // ---------- helpers
+  const tip = document.createElement('div'); tip.className = 'lib-tip'; root.appendChild(tip);
+  function showTip(box, ev, title, lines) {
+    tip.replaceChildren();
+    const h = document.createElement('div'); h.className = 'lib-th'; h.textContent = title; tip.appendChild(h);
+    for (const [name, value, color] of lines) {
+      const r = document.createElement('div'); r.className = 'lib-tr';
+      if (color) { const i = document.createElement('i'); i.style.setProperty('--sw', color); r.appendChild(i); }
+      const n = document.createElement('span'); n.textContent = name; r.appendChild(n);
+      const b = document.createElement('b'); b.textContent = value; r.appendChild(b);
+      tip.appendChild(r);
+    }
+    tip.style.display = 'block';
+    const rr = root.getBoundingClientRect();
+    let x = ev.clientX - rr.left + 12, y = ev.clientY - rr.top + 12;
+    const tw = tip.offsetWidth, th = tip.offsetHeight;
+    if (x + tw > rr.width) x = ev.clientX - rr.left - tw - 12;
+    if (y + th > root.offsetHeight) y = ev.clientY - rr.top - th - 12;
+    tip.style.left = x + 'px'; tip.style.top = y + 'px';
+  }
+  const hideTip = () => { tip.style.display = 'none'; };
+
+  function legend(box, series) {
+    if (series.length < 2) return;
+    const l = document.createElement('div'); l.className = 'lib-legend';
+    for (const s of series) { const sp = document.createElement('span'); sp.textContent = s.label; sp.style.setProperty('--sw', s.color); l.appendChild(sp); }
+    box.appendChild(l);
+  }
+  function textWidth(svg, str, size) {
+    const t = svg.append('text').attr('font-size', size).text(str); const w = t.node().getComputedTextLength(); t.remove(); return w;
+  }
+  function failed(box) { box.classList.remove('dash-skeleton'); box.replaceChildren(); const d = document.createElement('div'); d.className = 'lib-fail'; d.textContent = 'Failed to load'; box.appendChild(d); }
+  function ready(box, ds) {
+    if (ds.status === 'error' || ds.status === 'connect' || ds.status === 'missing') { failed(box); return false; }
+    if (ds.status !== 'ok') { box.classList.add('dash-skeleton'); box.replaceChildren(); return false; }
+    box.classList.remove('dash-skeleton'); box.replaceChildren(); return true;
+  }
+
+  // vertical (stacked) bars: rows, x key, series [{key,label,color,fmt?}]
+  function bars(box, rows, x, series, opts = {}) {
+    legend(box, series);
+    const W = Math.max(box.clientWidth, 200), H = opts.height || 200, fs = 11, mb = opts.rotate ? 52 : 26;
+    const svg = d3.select(box).append('svg').attr('viewBox', `0 0 ${W} ${H}`).attr('width', '100%');
+    const yMax = d3.max(rows, r => d3.sum(series, s => +r[s.key] || 0)) || 1;
+    const y = d3.scaleLinear([0, yMax], [H - mb, 8]).nice();
+    const yfmt = opts.yfmt || fmt;
+    const ml = Math.ceil(d3.max(y.ticks(4), t => textWidth(svg, yfmt(t), fs))) + 8;
+    const xs = d3.scaleBand(rows.map(r => r[x]), [ml, W - 4]).padding(0.25);
+    const bw = Math.min(xs.bandwidth(), 32), off = (xs.bandwidth() - bw) / 2;
+    svg.append('g').selectAll('line').data(y.ticks(4)).join('line').attr('x1', ml).attr('x2', W - 4).attr('y1', d => y(d)).attr('y2', d => y(d)).attr('stroke', 'var(--cds-chart-grid)');
+    svg.append('g').selectAll('text').data(y.ticks(4)).join('text').attr('x', ml - 6).attr('y', d => y(d) + 3).attr('text-anchor', 'end').attr('font-size', fs).attr('fill', 'var(--color-fg-muted)').text(yfmt);
+    const n = rows.length, every = (opts.xlabel || opts.rotate) ? 1 : (n <= 14 ? 1 : Math.ceil(n / 12));
+    const xl = svg.append('g').selectAll('text').data(rows.filter((r, i) => i % every === 0)).join('text').attr('font-size', fs).attr('fill', 'var(--color-fg-muted)').text(r => opts.xlabel ? opts.xlabel(r[x]) : r[x]);
+    if (opts.rotate) xl.attr('text-anchor', 'end').attr('transform', r => `translate(${xs(r[x]) + xs.bandwidth() / 2 + 4},${H - mb + 6}) rotate(-45)`);
+    else xl.attr('x', r => xs(r[x]) + xs.bandwidth() / 2).attr('y', H - 8).attr('text-anchor', 'middle');
+    svg.append('line').attr('x1', ml).attr('x2', W - 4).attr('y1', y(0)).attr('y2', y(0)).attr('stroke', 'var(--cds-chart-axis)');
+    const g = svg.append('g');
+    for (const r of rows) {
+      let acc = 0;
+      series.forEach((s, i) => {
+        const v = +r[s.key] || 0; if (!v) return;
+        const y1 = y(acc + v), y0 = y(acc); acc += v;
+        const gap = i > 0 ? 2 : 0;
+        const h = Math.max(0, y0 - y1 - gap);
+        g.append('rect').attr('x', xs(r[x]) + off).attr('y', y1).attr('width', bw).attr('height', h).attr('rx', Math.min(4, h / 2)).attr('fill', s.color);
+      });
+    }
+    svg.append('g').selectAll('rect').data(rows).join('rect').attr('x', r => xs(r[x])).attr('y', 0).attr('width', xs.bandwidth()).attr('height', H).attr('fill', 'transparent')
+      .on('mousemove', (ev, r) => showTip(box, ev, opts.title ? opts.title(r) : String(r[x]), series.filter(s => r[s.key] != null).map(s => [s.label, (s.fmt || yfmt)(+r[s.key]), series.length > 1 ? s.color : null]).concat(opts.extra ? opts.extra(r) : [])))
+      .on('mouseleave', hideTip);
+  }
+
+  // horizontal bars: rows, label key, series [{key,label,color}] (grouped when >1)
+  function hbars(box, rows, label, series, opts = {}) {
+    legend(box, series);
+    const W = Math.max(box.clientWidth, 200), fs = 11, rowH = series.length > 1 ? 10 + series.length * 12 : 24;
+    const H = rows.length * rowH + 8;
+    const svg = d3.select(box).append('svg').attr('viewBox', `0 0 ${W} ${H}`).attr('width', '100%');
+    const ml = Math.min(Math.ceil(d3.max(rows, r => textWidth(svg, String(r[label]), fs))) + 10, W * 0.45);
+    const vmax = d3.max(rows, r => d3.max(series, s => +r[s.key] || 0)) || 1;
+    const vfmt = opts.vfmt || fmt;
+    const mr = Math.ceil(textWidth(svg, vfmt(vmax), fs)) + 8;
+    const xsc = d3.scaleLinear([0, vmax], [ml, W - mr]);
+    const bh = series.length > 1 ? 10 : 14;
+    rows.forEach((r, i) => {
+      const top = 4 + i * rowH;
+      const lab = svg.append('text').attr('x', ml - 6).attr('y', top + rowH / 2 + 4).attr('text-anchor', 'end').attr('font-size', fs).attr('fill', 'var(--color-fg)').text(String(r[label]));
+      while (lab.node().getComputedTextLength() > ml - 8 && lab.text().length > 4) lab.text(lab.text().slice(0, -2).trimEnd() + '…');
+      series.forEach((s, j) => {
+        const v = +r[s.key] || 0; const yb = top + (series.length > 1 ? 5 + j * 12 : 5);
+        svg.append('rect').attr('x', ml).attr('y', yb).attr('width', Math.max(0, xsc(v) - ml)).attr('height', bh).attr('rx', 4).attr('fill', s.color);
+        svg.append('text').attr('x', xsc(v) + 4).attr('y', yb + bh / 2 + 4).attr('font-size', fs).attr('fill', 'var(--color-fg-muted)').text(vfmt(v));
+      });
+      svg.append('rect').attr('x', 0).attr('y', top).attr('width', W).attr('height', rowH).attr('fill', 'transparent')
+        .on('mousemove', ev => showTip(box, ev, String(r[label]), series.map(s => [s.label, vfmt(+r[s.key] || 0), series.length > 1 ? s.color : null]).concat(opts.extra ? opts.extra(r) : [])))
+        .on('mouseleave', hideTip);
+    });
+    svg.append('line').attr('x1', ml).attr('x2', ml).attr('y1', 0).attr('y2', H).attr('stroke', 'var(--cds-chart-axis)');
+  }
+
+  // stacked horizontal bars (one row per category, segments = series)
+  function hstack(box, rows, label, series, opts = {}) {
+    legend(box, series);
+    const W = Math.max(box.clientWidth, 200), fs = 11, rowH = 30, H = rows.length * rowH + 24;
+    const svg = d3.select(box).append('svg').attr('viewBox', `0 0 ${W} ${H}`).attr('width', '100%');
+    const ml = Math.ceil(d3.max(rows, r => textWidth(svg, String(r[label]), fs))) + 10;
+    const vmax = d3.max(rows, r => d3.sum(series, s => +r[s.key] || 0)) || 1;
+    const vfmt = opts.vfmt || fmt;
+    const xsc = d3.scaleLinear([0, vmax], [ml, W - 44]).nice();
+    svg.append('g').selectAll('text').data(xsc.ticks(4)).join('text').attr('x', d => xsc(d)).attr('y', H - 4).attr('text-anchor', 'middle').attr('font-size', fs).attr('fill', 'var(--color-fg-muted)').text(vfmt);
+    rows.forEach((r, i) => {
+      const top = 4 + i * rowH; let acc = 0;
+      svg.append('text').attr('x', ml - 6).attr('y', top + 15).attr('text-anchor', 'end').attr('font-size', fs).attr('fill', 'var(--color-fg)').text(String(r[label]));
+      series.forEach((s, j) => {
+        const v = +r[s.key] || 0; if (!v) return;
+        const x0 = xsc(acc), x1 = xsc(acc + v); acc += v;
+        svg.append('rect').attr('x', x0 + (j > 0 ? 2 : 0)).attr('y', top + 4).attr('width', Math.max(0, x1 - x0 - (j > 0 ? 2 : 0))).attr('height', 16).attr('rx', 4).attr('fill', s.color);
+      });
+      svg.append('text').attr('x', xsc(acc) + 5).attr('y', top + 16).attr('font-size', fs).attr('fill', 'var(--color-fg-muted)').text(vfmt(acc));
+      svg.append('rect').attr('x', 0).attr('y', top).attr('width', W).attr('height', rowH).attr('fill', 'transparent')
+        .on('mousemove', ev => showTip(box, ev, String(r[label]), series.map(s => [s.label, vfmt(+r[s.key] || 0), s.color]).concat(opts.extra ? opts.extra(r) : [])))
+        .on('mouseleave', hideTip);
+    });
+  }
+
+  function fillTable(tbl, rows, cols) {
+    const tb = tbl.querySelector('tbody'); tb.replaceChildren();
+    for (const r of rows) {
+      const tr = document.createElement('tr');
+      if (tbl.dataset.rowKey.includes(',')) tr.dataset.key = tbl.dataset.rowKey.split(',').map(k => encodeURIComponent(r[k] ?? '')).join(',');
+      for (const c of cols) { const td = document.createElement('td'); if (c.num) td.className = 'lib-n'; td.textContent = c.f ? c.f(r[c.key]) : (r[c.key] ?? ''); tr.appendChild(td); }
+      tb.appendChild(tr);
+    }
+  }
+
+  // ---------- sortable / searchable log
+  const allTbl = root.querySelector('[data-table=all]');
+  const search = root.querySelector('.lib-search');
+  let sortKey = 'ended', sortDir = -1;
+  allTbl.querySelectorAll('th').forEach(th => th.querySelector('button').addEventListener('click', () => {
+    const k = th.dataset.field; sortDir = sortKey === k ? -sortDir : (k === 'title' || k === 'author' ? 1 : -1); sortKey = k; drawAll();
+  }));
+  search.addEventListener('input', drawAll);
+  function drawAll() {
+    const ds = dash.data('reads_log'); if (ds.status !== 'ok') return;
+    const q = search.value.trim().toLowerCase();
+    let rows = ds.data.filter(r => !q || ['title', 'author', 'genres', 'translator', 'format'].some(k => String(r[k] ?? '').toLowerCase().includes(q)));
+    rows = rows.slice().sort((a, b) => { const x = a[sortKey], y = b[sortKey]; const n = typeof x === 'number' || typeof y === 'number'; return (n ? ((+x || 0) - (+y || 0)) : String(x ?? '').localeCompare(String(y ?? ''))) * sortDir; });
+    allTbl.querySelectorAll('th').forEach(th => th.setAttribute('aria-sort', th.dataset.field === sortKey ? (sortDir > 0 ? 'ascending' : 'descending') : 'none'));
+    fillTable(allTbl, rows, [{ key: 'title' }, { key: 'author' }, { key: 'ended' }, { key: 'pages', num: true, f: fmt }, { key: 'format' }, { key: 'fiction' }, { key: 'genres' }, { key: 'original_year', num: true, f: v => v == null ? '' : (v < 0 ? fmt(-v) + ' BCE' : String(v)) }, { key: 'translator' }]);
+  }
+
+  // ---------- draw
+  const chart = name => root.querySelector(`[data-chart=${name}]`);
+  dash.onData(() => {
+    // tiles + takeaway
+    const hd = dash.data('headline');
+    root.querySelectorAll('[data-source=headline]').forEach(el => {
+      if (hd.status !== 'ok' || !hd.data[0]) { el.textContent = '—'; return; }
+      el.classList.remove('dash-skeleton');
+      const f = el.dataset.field, v = hd.data[0][f];
+      el.textContent = f === 'shelf_read_pct' ? fmt(+v) + '%' : (typeof v === 'number' ? (Number.isInteger(v) ? fmt(v) : fmt1(v)) : String(v ?? '—'));
+    });
+
+    const by = dash.data('by_year');
+    const yearSeries = {
+      booksYear: [{ key: 'fiction', label: 'Fiction', color: COL.fiction }, { key: 'nonfiction', label: 'Non-fiction', color: COL.nonfiction }],
+      pagesYear: [{ key: 'pages', label: 'Pages', color: C[0] }],
+      pace: [{ key: 'pages_per_day', label: 'Pages a day', color: C[1], fmt: fmt1 }],
+      formatYear: [{ key: 'paper', label: 'Paper', color: COL.paper }, { key: 'kindle', label: 'Kindle', color: COL.kindle }],
+      canonYear: [{ key: 'classic', label: 'Classic', color: COL.classic }, { key: 'canonical', label: 'Canonical work', color: COL.canonical }, { key: 'other', label: 'Other', color: COL.other }],
+    };
+    for (const [name, series] of Object.entries(yearSeries)) {
+      const box = chart(name); if (!ready(box, by)) continue;
+      bars(box, by.data, 'year', series, { height: 220, yfmt: name === 'pace' ? fmt1 : fmt, title: r => r.note ? `${r.year} (${r.note})` : String(r.year), extra: name === 'booksYear' ? (r => [['Reads', fmt(r.reads)], ['Rereads', fmt(r.rereads)], ['DNF', fmt(r.dnf)]]) : (name === 'pace' ? (r => [['Days counted', fmt(r.days)], ['Pages', fmt(r.pages)]]) : null) });
+    }
+
+    const bm = dash.data('by_month'); { const box = chart('pagesMonth'); if (ready(box, bm)) bars(box, bm.data, 'month', [{ key: 'pages', label: 'Pages', color: C[0] }], { height: 200, xlabel: m => m.endsWith('-01') || m === '2021-08' ? m.slice(0, 4) : '', title: r => d3.utcFormat('%b %Y')(new Date(r.month + '-01T00:00:00Z')), extra: r => [['Books finished', fmt(r.reads)]] }); }
+
+    const gy = dash.data('genres_by_year');
+    for (const [name, which] of [['genresYearF', 'Fiction'], ['genresYearN', 'Non-fiction']]) { const box = chart(name); if (!ready(box, gy)) continue;
+      const data = gy.data.filter(r => r.fiction === which);
+      const tot = d3.rollup(data, v => d3.sum(v, r => +r.reads), r => r.genre);
+      const top = Array.from(tot, ([g, n]) => [g, n]).sort((a, b) => b[1] - a[1]).slice(0, 6).map(d => d[0]);
+      const years = Array.from(new Set(gy.data.map(r => r.year))).sort();
+      const rows = years.map(y => { const o = { year: y, Other: 0 }; for (const g of top) o[g] = 0; for (const r of data.filter(r => r.year === y)) { if (top.includes(r.genre)) o[r.genre] += +r.reads; else o.Other += +r.reads; } return o; });
+      bars(box, rows, 'year', top.map((g, i) => ({ key: g, label: g, color: C[i] })).concat([{ key: 'Other', label: 'Other genres', color: COL.other }]), { height: 220 });
+    }
+    const gr = dash.data('genres_read');
+    for (const [name, which, color] of [['genresReadF', 'Fiction', COL.fiction], ['genresReadN', 'Non-fiction', COL.nonfiction]]) { const box = chart(name); if (!ready(box, gr)) continue;
+      const rows = gr.data.filter(r => r.fiction === which).sort((a, b) => +b.reads - +a.reads).slice(0, 12);
+      hbars(box, rows, 'genre', [{ key: 'reads', label: 'Reads', color }], { extra: r => [['Distinct books', fmt(r.books)], ['Pages', fmt(r.pages)]] });
+    }
+    const fr = dash.data('forms_read'); { const box = chart('forms'); if (ready(box, fr)) hbars(box, fr.data.slice().sort((a, b) => +b.books - +a.books), 'form', [{ key: 'books', label: 'Books', color: C[1] }]); }
+    const cr = dash.data('centuries_read'); { const box = chart('centuries'); if (ready(box, cr)) bars(box, cr.data.slice().sort((a, b) => +a.order - +b.order), 'century', [{ key: 'books', label: 'Books', color: C[4] }], { height: 250, rotate: true }); }
+    const er = dash.data('eras_by_status'); { const box = chart('eras'); if (ready(box, er)) {
+      const eras = Array.from(new Set(er.data.map(r => r.era)));
+      const rows = eras.map(e => { const o = { era: e }; for (const r of er.data.filter(r => r.era === e)) o[r.status] = +r.books; return o; });
+      hbars(box, rows, 'era', [{ key: 'Read', label: 'Read', color: COL.read }, { key: 'Unread', label: 'Unread shelf', color: COL.unread }, { key: 'Wishlist', label: 'Wishlist', color: COL.wishlist }]);
+    } }
+    const ta = dash.data('top_authors'); { const box = chart('authors'); if (ready(box, ta)) hbars(box, ta.data.slice(0, 15), 'author', [{ key: 'reads', label: 'Reads', color: C[0] }], { extra: r => [['Distinct books', fmt(r.books)], ['Pages', fmt(r.pages)]] }); }
+    const tt = dash.data('top_translators'); { const box = chart('translators'); if (ready(box, tt)) hbars(box, tt.data.slice(0, 10), 'translator', [{ key: 'reads', label: 'Reads', color: C[2] }], { extra: r => [['Distinct books', fmt(r.books)]] }); }
+
+    const rl = dash.data('reads_log');
+    const longest = root.querySelector('[data-table=longest]'), rereads = root.querySelector('[data-table=rereads]');
+    if (rl.status === 'ok') {
+      fillTable(longest, rl.data.slice().sort((a, b) => +b.pages - +a.pages).slice(0, 15), [{ key: 'title' }, { key: 'author' }, { key: 'year', num: true }, { key: 'pages', num: true, f: fmt }]);
+      fillTable(rereads, rl.data.filter(r => r.reread).sort((a, b) => a.title.localeCompare(b.title) || a.ended.localeCompare(b.ended)), [{ key: 'title' }, { key: 'ended' }, { key: 'format' }]);
+      drawAll();
+    } else { fillTable(longest, [], []); fillTable(rereads, [], []); fillTable(allTbl, [], []); }
+    const or = dash.data('other_reads'); const otherT = root.querySelector('[data-table=other]');
+    fillTable(otherT, or.status === 'ok' ? or.data : [], [{ key: 'kind' }, { key: 'title' }, { key: 'pages_read', num: true, f: v => v == null ? '' : fmt(v) }, { key: 'started', f: v => v ?? '' }, { key: 'ended', f: v => v ?? '' }]);
+
+    // own
+    const cb = dash.data('copies_by');
+    { const box = chart('copies'); if (ready(box, cb)) { const rows = cb.data.filter(r => r.dimension === 'Format').map(r => ({ key: r.key, copies: +r.copies, kind: 'Format' })).concat(cb.data.filter(r => r.dimension === 'Binding').map(r => ({ key: 'Paper · ' + r.key, copies: +r.copies }))); hbars(box, rows, 'key', [{ key: 'copies', label: 'Copies', color: C[2] }]); } }
+    { const box = chart('publishers'); if (ready(box, cb)) hbars(box, cb.data.filter(r => r.dimension === 'Publisher').slice(0, 20), 'key', [{ key: 'copies', label: 'Copies', color: C[3] }]); }
+    const ss = dash.data('shelf_status');
+    const shelfRows = () => ['Paper', 'Kindle', 'Both'].map(f => { const o = { format: f === 'Both' ? 'Paper + Kindle' : f + ' only', pages: {} }; for (const r of ss.data.filter(r => r.format === f)) { o[r.status] = +r.books; o.pages[r.status] = +r.pages; o['np' + r.status] = +r.books_no_pages; } return o; });
+    { const box = chart('shelf'); if (ready(box, ss)) hstack(box, shelfRows(), 'format', [{ key: 'Read', label: 'Read', color: COL.read }, { key: 'Reading', label: 'Reading', color: COL.reading }, { key: 'Abandoned', label: 'Abandoned', color: COL.abandoned }, { key: 'Unread', label: 'Unread', color: COL.unread }], { extra: r => [['Unread pages', fmt(r.pages.Unread || 0)], ['Unread with no page count', fmt(r.npUnread || 0)]] }); }
+    { const box = chart('shelfPages'); if (ready(box, ss)) hbars(box, shelfRows().map(r => ({ format: r.format, pages: r.pages.Unread || 0, books: r.Unread || 0 })), 'format', [{ key: 'pages', label: 'Unread pages', color: COL.unread }], { extra: r => [['Unread books', fmt(r.books)]] }); }
+    const kq = dash.data('kindle_by_quarter'); { const box = chart('kindleQ'); if (ready(box, kq)) bars(box, kq.data, 'quarter', [{ key: 'copies', label: 'Copies', color: COL.kindle }], { height: 220, xlabel: q => q.endsWith('Q1') || q === '2023 Q4' ? q.slice(0, 4) : '' }); }
+    const kr = dash.data('kindle_read_by_year'); { const box = chart('kindleRead'); if (ready(box, kr)) bars(box, kr.data, 'year', [{ key: 'read', label: 'Read since', color: COL.read }, { key: 'unread', label: 'Still unread', color: COL.unread }], { height: 220, extra: r => [['Bought', fmt(r.copies)]] }); }
+
+    // unread
+    const bl = dash.data('backlog');
+    const pools = [{ key: 'Unread shelf', label: 'Unread shelf', color: COL.unread }, { key: 'Wishlist', label: 'Wishlist', color: COL.wishlist }];
+    const pivot = (dim, limit, order, which) => {
+      const src = bl.data.filter(r => r.dimension === dim && (!which || r.fiction === which));
+      const keys = order || Array.from(d3.rollup(src, v => d3.sum(v, r => +r.books), r => r.key)).sort((a, b) => b[1] - a[1]).slice(0, limit).map(d => d[0]);
+      return keys.map(k => { const o = { key: k, pg: {} }; for (const r of src.filter(r => r.key === k)) { o[r.pool] = (o[r.pool] || 0) + +r.books; o.pg[r.pool] = (o.pg[r.pool] || 0) + +r.pages; } return o; });
+    };
+    const extra = r => [['Unread shelf pages', fmt(r.pg['Unread shelf'] || 0)], ['Wishlist pages', fmt(r.pg['Wishlist'] || 0)]];
+    { const box = chart('backlogGenreF'); if (ready(box, bl)) hbars(box, pivot('Genre', 12, null, 'Fiction'), 'key', pools, { extra }); }
+    { const box = chart('backlogGenreN'); if (ready(box, bl)) hbars(box, pivot('Genre', 12, null, 'Non-fiction'), 'key', pools, { extra }); }
+    { const box = chart('backlogEra'); if (ready(box, bl)) hbars(box, pivot('Era', 99, ['Antiquity (to 500)', 'Medieval (500–1499)', '1500–1799', '1800s', '1900–1949', '1950–1999', '2000s', 'No year']), 'key', pools, { extra }); }
+    { const box = chart('backlogLength'); if (ready(box, bl)) hbars(box, pivot('Length', 99, ['Under 200', '200–399', '400–599', '600–899', '900+', 'No page count']), 'key', pools, { extra }); }
+    { const box = chart('backlogCanon'); if (ready(box, bl)) hbars(box, pivot('Canon', 99, ['Classic', 'Canonical work', 'Not canon']), 'key', pools, { extra }); }
+  });
+
+  // links
+  const named = document.getElementById(location.hash.slice(1));
+  if (named && root.contains(named)) named.scrollIntoView();
+})();
+</script>

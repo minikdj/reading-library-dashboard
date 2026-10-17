@@ -1,0 +1,289 @@
+[
+{
+"genre": "History",
+"fiction": "Non-fiction",
+"reads": 55,
+"books": 55,
+"pages": 29292
+},
+{
+"genre": "Literary fiction",
+"fiction": "Fiction",
+"reads": 42,
+"books": 41,
+"pages": 17197
+},
+{
+"genre": "Philosophy",
+"fiction": "Non-fiction",
+"reads": 18,
+"books": 18,
+"pages": 7383
+},
+{
+"genre": "Politics",
+"fiction": "Non-fiction",
+"reads": 18,
+"books": 16,
+"pages": 5931
+},
+{
+"genre": "Religion",
+"fiction": "Non-fiction",
+"reads": 17,
+"books": 17,
+"pages": 10663
+},
+{
+"genre": "Romance",
+"fiction": "Fiction",
+"reads": 14,
+"books": 14,
+"pages": 5234
+},
+{
+"genre": "Historical fiction",
+"fiction": "Fiction",
+"reads": 10,
+"books": 10,
+"pages": 5403
+},
+{
+"genre": "Science",
+"fiction": "Non-fiction",
+"reads": 10,
+"books": 10,
+"pages": 4377
+},
+{
+"genre": "Mythology",
+"fiction": "Fiction",
+"reads": 10,
+"books": 10,
+"pages": 4913
+},
+{
+"genre": "Memoir",
+"fiction": "Non-fiction",
+"reads": 10,
+"books": 10,
+"pages": 2785
+},
+{
+"genre": "Fantasy",
+"fiction": "Fiction",
+"reads": 9,
+"books": 9,
+"pages": 5978
+},
+{
+"genre": "Computer science",
+"fiction": "Non-fiction",
+"reads": 8,
+"books": 8,
+"pages": 4088
+},
+{
+"genre": "Satire",
+"fiction": "Fiction",
+"reads": 8,
+"books": 8,
+"pages": 2617
+},
+{
+"genre": "Sci-fi",
+"fiction": "Fiction",
+"reads": 7,
+"books": 7,
+"pages": 2413
+},
+{
+"genre": "Philosophy",
+"fiction": "Fiction",
+"reads": 7,
+"books": 6,
+"pages": 2445
+},
+{
+"genre": "Biography",
+"fiction": "Non-fiction",
+"reads": 7,
+"books": 7,
+"pages": 5004
+},
+{
+"genre": "Literary criticism",
+"fiction": "Non-fiction",
+"reads": 6,
+"books": 4,
+"pages": 1059
+},
+{
+"genre": "Mystery",
+"fiction": "Fiction",
+"reads": 6,
+"books": 6,
+"pages": 1812
+},
+{
+"genre": "Self help",
+"fiction": "Non-fiction",
+"reads": 6,
+"books": 6,
+"pages": 1467
+},
+{
+"genre": "Psychology",
+"fiction": "Non-fiction",
+"reads": 6,
+"books": 6,
+"pages": 1334
+},
+{
+"genre": "Horror",
+"fiction": "Fiction",
+"reads": 6,
+"books": 6,
+"pages": 2456
+},
+{
+"genre": "Natural history",
+"fiction": "Non-fiction",
+"reads": 5,
+"books": 5,
+"pages": 1420
+},
+{
+"genre": "Children’s",
+"fiction": "Fiction",
+"reads": 4,
+"books": 4,
+"pages": 831
+},
+{
+"genre": "Economics",
+"fiction": "Non-fiction",
+"reads": 4,
+"books": 4,
+"pages": 2306
+},
+{
+"genre": "Medicine",
+"fiction": "Non-fiction",
+"reads": 3,
+"books": 3,
+"pages": 957
+},
+{
+"genre": "Religion",
+"fiction": "Fiction",
+"reads": 3,
+"books": 3,
+"pages": 1751
+},
+{
+"genre": "Journalism",
+"fiction": "Non-fiction",
+"reads": 3,
+"books": 3,
+"pages": 880
+},
+{
+"genre": "Current events",
+"fiction": "Non-fiction",
+"reads": 2,
+"books": 2,
+"pages": 1344
+},
+{
+"genre": "Thriller",
+"fiction": "Fiction",
+"reads": 2,
+"books": 2,
+"pages": 414
+},
+{
+"genre": "Travel",
+"fiction": "Non-fiction",
+"reads": 2,
+"books": 2,
+"pages": 1500
+},
+{
+"genre": "Animals",
+"fiction": "Non-fiction",
+"reads": 2,
+"books": 2,
+"pages": 678
+},
+{
+"genre": "True crime",
+"fiction": "Non-fiction",
+"reads": 2,
+"books": 2,
+"pages": 643
+},
+{
+"genre": "Art history",
+"fiction": "Non-fiction",
+"reads": 2,
+"books": 2,
+"pages": 1126
+},
+{
+"genre": "Books about books",
+"fiction": "Fiction",
+"reads": 2,
+"books": 2,
+"pages": 272
+},
+{
+"genre": "Western",
+"fiction": "Fiction",
+"reads": 1,
+"books": 1,
+"pages": 964
+},
+{
+"genre": "Books about books",
+"fiction": "Non-fiction",
+"reads": 1,
+"books": 1,
+"pages": 95
+},
+{
+"genre": "Satire",
+"fiction": "Non-fiction",
+"reads": 1,
+"books": 1,
+"pages": 134
+},
+{
+"genre": "Math",
+"fiction": "Non-fiction",
+"reads": 1,
+"books": 1,
+"pages": 750
+},
+{
+"genre": "YA",
+"fiction": "Fiction",
+"reads": 1,
+"books": 1,
+"pages": 412
+},
+{
+"genre": "Gardening",
+"fiction": "Non-fiction",
+"reads": 1,
+"books": 1,
+"pages": 217
+},
+{
+"genre": "Literary criticism",
+"fiction": "Fiction",
+"reads": 1,
+"books": 1,
+"pages": 152
+}
+]

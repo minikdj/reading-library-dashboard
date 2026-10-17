@@ -1,0 +1,18 @@
+[
+{
+"binding": "Paperback",
+"copies": 261
+},
+{
+"binding": "Hardcover",
+"copies": 134
+},
+{
+"binding": "Mass market paperback",
+"copies": 4
+},
+{
+"binding": "Other",
+"copies": 1
+}
+]

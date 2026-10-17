@@ -1,0 +1,86 @@
+[
+{
+"format": "Paper",
+"status": "Read",
+"books": 87,
+"pages": 39438,
+"books_no_pages": 0
+},
+{
+"format": "Paper",
+"status": "Reading",
+"books": 0,
+"pages": 0,
+"books_no_pages": 0
+},
+{
+"format": "Paper",
+"status": "Abandoned",
+"books": 1,
+"pages": 418,
+"books_no_pages": 0
+},
+{
+"format": "Paper",
+"status": "Unread",
+"books": 219,
+"pages": 123388,
+"books_no_pages": 22
+},
+{
+"format": "Kindle",
+"status": "Read",
+"books": 38,
+"pages": 15883,
+"books_no_pages": 0
+},
+{
+"format": "Kindle",
+"status": "Reading",
+"books": 1,
+"pages": 869,
+"books_no_pages": 0
+},
+{
+"format": "Kindle",
+"status": "Abandoned",
+"books": 1,
+"pages": 0,
+"books_no_pages": 1
+},
+{
+"format": "Kindle",
+"status": "Unread",
+"books": 78,
+"pages": 30952,
+"books_no_pages": 16
+},
+{
+"format": "Both",
+"status": "Read",
+"books": 49,
+"pages": 29196,
+"books_no_pages": 0
+},
+{
+"format": "Both",
+"status": "Reading",
+"books": 0,
+"pages": 0,
+"books_no_pages": 0
+},
+{
+"format": "Both",
+"status": "Abandoned",
+"books": 0,
+"pages": 0,
+"books_no_pages": 0
+},
+{
+"format": "Both",
+"status": "Unread",
+"books": 28,
+"pages": 19438,
+"books_no_pages": 3
+}
+]

@@ -1,0 +1,597 @@
+[
+{
+"pool": "Unread shelf",
+"fiction": "Fiction",
+"genre": "Literary fiction",
+"books": 77,
+"pages": 37086
+},
+{
+"pool": "Unread shelf",
+"fiction": "Fiction",
+"genre": "Historical fiction",
+"books": 18,
+"pages": 12332
+},
+{
+"pool": "Unread shelf",
+"fiction": "Fiction",
+"genre": "Fantasy",
+"books": 15,
+"pages": 10734
+},
+{
+"pool": "Unread shelf",
+"fiction": "Fiction",
+"genre": "Romance",
+"books": 10,
+"pages": 4146
+},
+{
+"pool": "Unread shelf",
+"fiction": "Fiction",
+"genre": "Satire",
+"books": 9,
+"pages": 3656
+},
+{
+"pool": "Unread shelf",
+"fiction": "Fiction",
+"genre": "Mystery",
+"books": 6,
+"pages": 2632
+},
+{
+"pool": "Unread shelf",
+"fiction": "Fiction",
+"genre": "Religion",
+"books": 6,
+"pages": 3533
+},
+{
+"pool": "Unread shelf",
+"fiction": "Fiction",
+"genre": "Sci-fi",
+"books": 5,
+"pages": 2008
+},
+{
+"pool": "Unread shelf",
+"fiction": "Fiction",
+"genre": "Mythology",
+"books": 5,
+"pages": 2704
+},
+{
+"pool": "Unread shelf",
+"fiction": "Fiction",
+"genre": "Horror",
+"books": 4,
+"pages": 1530
+},
+{
+"pool": "Unread shelf",
+"fiction": "Fiction",
+"genre": "Thriller",
+"books": 3,
+"pages": 2060
+},
+{
+"pool": "Unread shelf",
+"fiction": "Fiction",
+"genre": "Children’s",
+"books": 2,
+"pages": 217
+},
+{
+"pool": "Unread shelf",
+"fiction": "Fiction",
+"genre": "YA",
+"books": 1,
+"pages": 576
+},
+{
+"pool": "Unread shelf",
+"fiction": "Fiction",
+"genre": "Politics",
+"books": 1,
+"pages": 662
+},
+{
+"pool": "Unread shelf",
+"fiction": "Fiction",
+"genre": "Animals",
+"books": 1,
+"pages": 217
+},
+{
+"pool": "Unread shelf",
+"fiction": "Fiction",
+"genre": "Western",
+"books": 1,
+"pages": 274
+},
+{
+"pool": "Unread shelf",
+"fiction": "Non-fiction",
+"genre": "History",
+"books": 86,
+"pages": 51234
+},
+{
+"pool": "Unread shelf",
+"fiction": "Non-fiction",
+"genre": "Politics",
+"books": 34,
+"pages": 20815
+},
+{
+"pool": "Unread shelf",
+"fiction": "Non-fiction",
+"genre": "Biography",
+"books": 33,
+"pages": 25236
+},
+{
+"pool": "Unread shelf",
+"fiction": "Non-fiction",
+"genre": "Religion",
+"books": 21,
+"pages": 13045
+},
+{
+"pool": "Unread shelf",
+"fiction": "Non-fiction",
+"genre": "Natural history",
+"books": 20,
+"pages": 7556
+},
+{
+"pool": "Unread shelf",
+"fiction": "Non-fiction",
+"genre": "Memoir",
+"books": 17,
+"pages": 7603
+},
+{
+"pool": "Unread shelf",
+"fiction": "Non-fiction",
+"genre": "Philosophy",
+"books": 14,
+"pages": 7936
+},
+{
+"pool": "Unread shelf",
+"fiction": "Non-fiction",
+"genre": "Animals",
+"books": 13,
+"pages": 4760
+},
+{
+"pool": "Unread shelf",
+"fiction": "Non-fiction",
+"genre": "Science",
+"books": 12,
+"pages": 4549
+},
+{
+"pool": "Unread shelf",
+"fiction": "Non-fiction",
+"genre": "Literary criticism",
+"books": 9,
+"pages": 6106
+},
+{
+"pool": "Unread shelf",
+"fiction": "Non-fiction",
+"genre": "Economics",
+"books": 7,
+"pages": 2222
+},
+{
+"pool": "Unread shelf",
+"fiction": "Non-fiction",
+"genre": "Books about books",
+"books": 6,
+"pages": 3330
+},
+{
+"pool": "Unread shelf",
+"fiction": "Non-fiction",
+"genre": "Journalism",
+"books": 6,
+"pages": 2928
+},
+{
+"pool": "Unread shelf",
+"fiction": "Non-fiction",
+"genre": "Art history",
+"books": 5,
+"pages": 4858
+},
+{
+"pool": "Unread shelf",
+"fiction": "Non-fiction",
+"genre": "Cooking",
+"books": 4,
+"pages": 619
+},
+{
+"pool": "Unread shelf",
+"fiction": "Non-fiction",
+"genre": "Computer science",
+"books": 3,
+"pages": 776
+},
+{
+"pool": "Unread shelf",
+"fiction": "Non-fiction",
+"genre": "Language",
+"books": 3,
+"pages": 1648
+},
+{
+"pool": "Unread shelf",
+"fiction": "Non-fiction",
+"genre": "Psychology",
+"books": 3,
+"pages": 2222
+},
+{
+"pool": "Unread shelf",
+"fiction": "Non-fiction",
+"genre": "Mythology",
+"books": 2,
+"pages": 765
+},
+{
+"pool": "Unread shelf",
+"fiction": "Non-fiction",
+"genre": "Business",
+"books": 2,
+"pages": 917
+},
+{
+"pool": "Unread shelf",
+"fiction": "Non-fiction",
+"genre": "Travel",
+"books": 2,
+"pages": 342
+},
+{
+"pool": "Unread shelf",
+"fiction": "Non-fiction",
+"genre": "Self help",
+"books": 2,
+"pages": 557
+},
+{
+"pool": "Unread shelf",
+"fiction": "Non-fiction",
+"genre": "Gardening",
+"books": 1,
+"pages": 280
+},
+{
+"pool": "Unread shelf",
+"fiction": "Non-fiction",
+"genre": "Math",
+"books": 1,
+"pages": 272
+},
+{
+"pool": "Unread shelf",
+"fiction": "Unknown",
+"genre": "No genre",
+"books": 2,
+"pages": 256
+},
+{
+"pool": "Wishlist",
+"fiction": "Fiction",
+"genre": "Literary fiction",
+"books": 68,
+"pages": 32237
+},
+{
+"pool": "Wishlist",
+"fiction": "Fiction",
+"genre": "Historical fiction",
+"books": 53,
+"pages": 30123
+},
+{
+"pool": "Wishlist",
+"fiction": "Fiction",
+"genre": "Mystery",
+"books": 15,
+"pages": 5434
+},
+{
+"pool": "Wishlist",
+"fiction": "Fiction",
+"genre": "Thriller",
+"books": 14,
+"pages": 5750
+},
+{
+"pool": "Wishlist",
+"fiction": "Fiction",
+"genre": "Satire",
+"books": 13,
+"pages": 6008
+},
+{
+"pool": "Wishlist",
+"fiction": "Fiction",
+"genre": "Sci-fi",
+"books": 11,
+"pages": 5253
+},
+{
+"pool": "Wishlist",
+"fiction": "Fiction",
+"genre": "Children’s",
+"books": 10,
+"pages": 1835
+},
+{
+"pool": "Wishlist",
+"fiction": "Fiction",
+"genre": "Fantasy",
+"books": 10,
+"pages": 3729
+},
+{
+"pool": "Wishlist",
+"fiction": "Fiction",
+"genre": "Horror",
+"books": 10,
+"pages": 3478
+},
+{
+"pool": "Wishlist",
+"fiction": "Fiction",
+"genre": "Romance",
+"books": 9,
+"pages": 3787
+},
+{
+"pool": "Wishlist",
+"fiction": "Fiction",
+"genre": "Mythology",
+"books": 5,
+"pages": 1317
+},
+{
+"pool": "Wishlist",
+"fiction": "Fiction",
+"genre": "Religion",
+"books": 4,
+"pages": 2341
+},
+{
+"pool": "Wishlist",
+"fiction": "Fiction",
+"genre": "Western",
+"books": 2,
+"pages": 399
+},
+{
+"pool": "Wishlist",
+"fiction": "Fiction",
+"genre": "Philosophy",
+"books": 1,
+"pages": 352
+},
+{
+"pool": "Wishlist",
+"fiction": "Fiction",
+"genre": "YA",
+"books": 1,
+"pages": 389
+},
+{
+"pool": "Wishlist",
+"fiction": "Fiction",
+"genre": "Animals",
+"books": 1,
+"pages": 32
+},
+{
+"pool": "Wishlist",
+"fiction": "Fiction",
+"genre": "Politics",
+"books": 1,
+"pages": 304
+},
+{
+"pool": "Wishlist",
+"fiction": "Non-fiction",
+"genre": "History",
+"books": 154,
+"pages": 86283
+},
+{
+"pool": "Wishlist",
+"fiction": "Non-fiction",
+"genre": "Biography",
+"books": 64,
+"pages": 34453
+},
+{
+"pool": "Wishlist",
+"fiction": "Non-fiction",
+"genre": "Politics",
+"books": 49,
+"pages": 20775
+},
+{
+"pool": "Wishlist",
+"fiction": "Non-fiction",
+"genre": "Economics",
+"books": 45,
+"pages": 21158
+},
+{
+"pool": "Wishlist",
+"fiction": "Non-fiction",
+"genre": "Memoir",
+"books": 32,
+"pages": 12481
+},
+{
+"pool": "Wishlist",
+"fiction": "Non-fiction",
+"genre": "Religion",
+"books": 29,
+"pages": 17794
+},
+{
+"pool": "Wishlist",
+"fiction": "Non-fiction",
+"genre": "Animals",
+"books": 26,
+"pages": 7819
+},
+{
+"pool": "Wishlist",
+"fiction": "Non-fiction",
+"genre": "Natural history",
+"books": 20,
+"pages": 6462
+},
+{
+"pool": "Wishlist",
+"fiction": "Non-fiction",
+"genre": "Science",
+"books": 17,
+"pages": 5574
+},
+{
+"pool": "Wishlist",
+"fiction": "Non-fiction",
+"genre": "Philosophy",
+"books": 14,
+"pages": 6860
+},
+{
+"pool": "Wishlist",
+"fiction": "Non-fiction",
+"genre": "Literary criticism",
+"books": 13,
+"pages": 6788
+},
+{
+"pool": "Wishlist",
+"fiction": "Non-fiction",
+"genre": "Journalism",
+"books": 12,
+"pages": 4265
+},
+{
+"pool": "Wishlist",
+"fiction": "Non-fiction",
+"genre": "Books about books",
+"books": 11,
+"pages": 4285
+},
+{
+"pool": "Wishlist",
+"fiction": "Non-fiction",
+"genre": "Math",
+"books": 11,
+"pages": 4901
+},
+{
+"pool": "Wishlist",
+"fiction": "Non-fiction",
+"genre": "Travel",
+"books": 11,
+"pages": 5150
+},
+{
+"pool": "Wishlist",
+"fiction": "Non-fiction",
+"genre": "True crime",
+"books": 11,
+"pages": 5993
+},
+{
+"pool": "Wishlist",
+"fiction": "Non-fiction",
+"genre": "Current events",
+"books": 9,
+"pages": 2680
+},
+{
+"pool": "Wishlist",
+"fiction": "Non-fiction",
+"genre": "Computer science",
+"books": 9,
+"pages": 3801
+},
+{
+"pool": "Wishlist",
+"fiction": "Non-fiction",
+"genre": "Psychology",
+"books": 6,
+"pages": 2405
+},
+{
+"pool": "Wishlist",
+"fiction": "Non-fiction",
+"genre": "Business",
+"books": 6,
+"pages": 3455
+},
+{
+"pool": "Wishlist",
+"fiction": "Non-fiction",
+"genre": "Language",
+"books": 5,
+"pages": 2287
+},
+{
+"pool": "Wishlist",
+"fiction": "Non-fiction",
+"genre": "Medicine",
+"books": 5,
+"pages": 2502
+},
+{
+"pool": "Wishlist",
+"fiction": "Non-fiction",
+"genre": "Cooking",
+"books": 2,
+"pages": 867
+},
+{
+"pool": "Wishlist",
+"fiction": "Non-fiction",
+"genre": "Art history",
+"books": 2,
+"pages": 1306
+},
+{
+"pool": "Wishlist",
+"fiction": "Non-fiction",
+"genre": "Fantasy",
+"books": 1,
+"pages": 592
+},
+{
+"pool": "Wishlist",
+"fiction": "Non-fiction",
+"genre": "Gardening",
+"books": 1,
+"pages": 320
+},
+{
+"pool": "Wishlist",
+"fiction": "Unknown",
+"genre": "No genre",
+"books": 5,
+"pages": 1081
+}
+]

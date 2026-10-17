@@ -1,0 +1,74 @@
+[
+{
+"pool": "Unread shelf",
+"length": "Under 200",
+"books": 12,
+"pages": 1602
+},
+{
+"pool": "Unread shelf",
+"length": "200–399",
+"books": 85,
+"pages": 26015
+},
+{
+"pool": "Unread shelf",
+"length": "400–599",
+"books": 71,
+"pages": 34763
+},
+{
+"pool": "Unread shelf",
+"length": "600–899",
+"books": 61,
+"pages": 45851
+},
+{
+"pool": "Unread shelf",
+"length": "900+",
+"books": 55,
+"pages": 65547
+},
+{
+"pool": "Unread shelf",
+"length": "No page count",
+"books": 41,
+"pages": 0
+},
+{
+"pool": "Wishlist",
+"length": "Under 200",
+"books": 52,
+"pages": 7487
+},
+{
+"pool": "Wishlist",
+"length": "200–399",
+"books": 212,
+"pages": 65779
+},
+{
+"pool": "Wishlist",
+"length": "400–599",
+"books": 109,
+"pages": 54909
+},
+{
+"pool": "Wishlist",
+"length": "600–899",
+"books": 100,
+"pages": 71217
+},
+{
+"pool": "Wishlist",
+"length": "900+",
+"books": 36,
+"pages": 42951
+},
+{
+"pool": "Wishlist",
+"length": "No page count",
+"books": 1,
+"pages": 0
+}
+]

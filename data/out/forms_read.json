@@ -1,0 +1,82 @@
+[
+{
+"form": "Novel",
+"books": 73
+},
+{
+"form": "Narrative nonfiction",
+"books": 64
+},
+{
+"form": "Treatise",
+"books": 33
+},
+{
+"form": "Novella",
+"books": 8
+},
+{
+"form": "Epic",
+"books": 8
+},
+{
+"form": "Play",
+"books": 5
+},
+{
+"form": "Technical",
+"books": 5
+},
+{
+"form": "Scripture",
+"books": 5
+},
+{
+"form": "Essay",
+"books": 3
+},
+{
+"form": "Anthology",
+"books": 3
+},
+{
+"form": "Poetry",
+"books": 3
+},
+{
+"form": "Graphic novel",
+"books": 3
+},
+{
+"form": "Letters",
+"books": 3
+},
+{
+"form": "Short stories",
+"books": 2
+},
+{
+"form": "Essay collection",
+"books": 2
+},
+{
+"form": "Reference",
+"books": 2
+},
+{
+"form": "Pamphlet",
+"books": 1
+},
+{
+"form": "Picture book",
+"books": 1
+},
+{
+"form": "Comic",
+"books": 1
+},
+{
+"form": "Textbook",
+"books": 1
+}
+]

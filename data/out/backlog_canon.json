@@ -1,0 +1,38 @@
+[
+{
+"pool": "Unread shelf",
+"canon": "Classic",
+"books": 11,
+"pages": 4281
+},
+{
+"pool": "Unread shelf",
+"canon": "Canonical work",
+"books": 132,
+"pages": 72193
+},
+{
+"pool": "Unread shelf",
+"canon": "Not canon",
+"books": 182,
+"pages": 97304
+},
+{
+"pool": "Wishlist",
+"canon": "Classic",
+"books": 3,
+"pages": 649
+},
+{
+"pool": "Wishlist",
+"canon": "Canonical work",
+"books": 74,
+"pages": 34843
+},
+{
+"pool": "Wishlist",
+"canon": "Not canon",
+"books": 433,
+"pages": 206851
+}
+]
