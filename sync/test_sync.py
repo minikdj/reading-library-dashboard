@@ -20,6 +20,7 @@ FIX = HERE / 'fixtures'
 os.environ.setdefault('NOTION_QUEUE_DS', 'queue-ds-for-tests')
 BOOKS_DS, READS_DS, AUTHORS_DS, LOG_DS = gs.cfg('NOTION_BOOKS_DS'), gs.cfg('NOTION_READS_DS'), gs.cfg('NOTION_AUTHORS_DS'), gs.cfg('NOTION_LOG_DS')
 QUEUE_DS = gs.cfg('NOTION_QUEUE_DS')
+EDITIONS_DS = gs.cfg('NOTION_EDITIONS_DS')
 
 
 # ---------------------------------------------------------------- a fake Notion API
@@ -191,6 +192,10 @@ class Workspace:
         pid = self.n.seed(BOOKS_DS, {'Title': title(t), 'Author': rel(aid)})
         self.books[t] = pid
         return pid
+
+    def edition(self, t, book, fmt='Paper', publisher='', owned=True, disposed=None):
+        return self.n.seed(EDITIONS_DS, {'Edition': title(t), 'Book': rel(book), 'Format': select(fmt), 'Publisher': text(publisher),
+                                         'Owned': {'checkbox': owned}, 'Disposed': date(disposed)})
 
     def read(self, t, book, started=None, ended=None, outcome=None, estimated=False, pages_read=None, notes='', edition=None, inferred=False):
         return self.n.seed(READS_DS, {'Read': title(t), 'Book': rel(book), 'Started': date(started), 'Ended': date(ended), 'Outcome': select(outcome),
@@ -508,17 +513,18 @@ class ReadingShelfTests(unittest.TestCase):
         report, _ = ws.sync([], shelf=[])
         self.assertEqual(report['questions'], [])
 
-    def test_shelf_item_with_no_open_read_is_questioned(self):
+    def test_shelf_item_with_no_open_read_creates_a_reread(self):
         ws = Workspace()
         b1 = ws.book('Lonesome Dove', 'Larry McMurtry')
         ws.read('Lonesome Dove · 2026', b1, started='2026-06-01', ended='2026-06-30', outcome='Finished', pages_read=858)
         report, _ = ws.sync([], shelf=[shelf_item('Lonesome Dove', 'Larry McMurtry', book_id='56346987')])
+        new = ws.n.creates(READS_DS)
+        self.assertEqual(len(new), 1)
+        self.assertEqual((_plain(new[0]['Read']['title']), new[0]['Started']['date']['start'], new[0]['Dates estimated']['checkbox']), ('Lonesome Dove · 2026 (reread)', '2026-10-09', True))
         q = report['questions'][0]
-        self.assertEqual((q['kind'], q['book']), ('No open Read', b1))
-        self.assertEqual(q['event']['kind'], 'started')
-        self.assertEqual(q['event']['guid'], 'Shelf5001:started:2026-10-09')
-        self.assertIn('Finished', q['proposed'])
-        self.assertEqual(ws.n.creates(LOG_DS), [])
+        self.assertEqual((q['kind'], q['book']), ('Edition', b1))
+        rows = ws.n.creates(LOG_DS)
+        self.assertEqual((len(rows), _plain(rows[0]['Goodreads id']['rich_text'])), (1, 'Shelf5001:started:2026-10-09'))
 
     def test_shelf_item_with_an_open_read_recovers_a_started_row(self):
         ws = Workspace()
@@ -791,14 +797,16 @@ class QueueTests(unittest.TestCase):
         self.assertIn('Stalin: Waiting for Hitler', q['options'])
         self.assertIn('Stalin: Paradoxes of Power', q['options'])
 
-    def test_event_with_no_open_read_is_queued(self):
+    def test_event_with_no_read_to_land_on_is_queued(self):
+        # progress dated before the Book's only Read began: history that fits no Read (a reread is only >14 days after a close)
         b2 = self.ws.book('Middlemarch', 'George Eliot')
         self.ws.read('Middlemarch · 2024', b2, started='2024-01-01', ended='2024-02-01', outcome='Finished', pages_read=800)
-        item = progress_item('UserStatus202', 'Mon, 12 Oct 2026 21:00:00 -0400', '19089', 'Middlemarch', 10, 900)
+        item = progress_item('UserStatus202', 'Wed, 20 Dec 2023 21:00:00 -0500', '19089', 'Middlemarch', 10, 900)
         self.ws.sync([item])
         q = self.ws.queue_rows(kind='No open Read')[0]
         self.assertEqual((q['status'], q['book']), ('Open', b2))
         self.assertEqual(self.ws.n.creates(LOG_DS), [])
+        self.assertEqual(self.ws.n.creates(READS_DS), [])
 
     def test_pending_event_is_retried_and_lands_once_the_read_exists(self):
         ev = gs.parse_update(progress_item('UserStatus203', 'Mon, 12 Oct 2026 21:00:00 -0400', '56346987', 'Lonesome Dove', 10, 964))
@@ -869,6 +877,366 @@ class QueueTests(unittest.TestCase):
         report = gs.run_sync(None, [item], {}, {'book_cache': {}, 'runs': []}, offline_lib=lib, now='2026-10-17T09:00:00-04:00')
         self.assertEqual(report['questions'][0]['kind'], 'Unmatched book')
         self.assertEqual(report['open_questions'], [])
+
+
+# ---------------------------------------------------------------- step 4: Reads are created, closed and reopened
+def finished_item(guid, pub, gr_id, title_text, author='Larry McMurtry'):
+    return rss_item(guid, pub, f"Dan finished reading '{title_text}'",
+                    f'Dan finished reading <a class="bookTitle" href="/book/show/{gr_id}-x">{title_text}</a> <span class="by">by</span> '
+                    f'<a class="authorName" href="/author/show/1.x">{author}</a>', link='https://www.goodreads.com/review/show/1')
+
+
+def dnf_item(guid, pub, gr_id, title_text, author='Larry McMurtry'):
+    return rss_item(guid, pub, f"Dan did not finish '{title_text}'",
+                    f'Dan did not finish <a class="bookTitle" href="/book/show/{gr_id}-x">{title_text}</a> <span class="by">by</span> '
+                    f'<a class="authorName" href="/author/show/1.x">{author}</a>', link='https://www.goodreads.com/review/show/1')
+
+
+def notes_of(ws, read):
+    return _plain(ws.n.prop(read, 'Notes')['rich_text'])
+
+
+class CloseTests(unittest.TestCase):
+    def setUp(self):
+        self.ws = Workspace()
+        self.book = self.ws.book('Lonesome Dove', 'Larry McMurtry')
+        self.fin = finished_item('ReadStatus300', 'Thu, 15 Oct 2026 21:00:00 -0400', '56346987', 'Lonesome Dove')
+
+    def test_finished_closes_the_open_read_and_asks_for_pages(self):
+        r = self.ws.read('Lonesome Dove · 2026', self.book, started='2026-10-04')
+        report, _ = self.ws.sync([self.fin])
+        p = self.ws.n.pages[r]['properties']
+        self.assertEqual((p['Ended']['date']['start'], p['Outcome']['select']['name'], p['Pages read']['number']), ('2026-10-15', 'Finished', None))
+        self.assertIn('Closed from Goodreads 2026-10-17', notes_of(self.ws, r))
+        self.assertEqual(len(self.ws.n.creates(LOG_DS)), 1)
+        q = [q for q in report['questions'] if q['kind'] == 'Pages read'][0]
+        self.assertEqual((q['read'], q['default_applied'], q['key']), (r, True, f'pages:{r}'))
+        self.assertIn('Pages read blank', q['proposed'])
+        self.assertIn('2026-10-15', q['question'])
+
+    def test_dnf_closes_with_the_last_logged_page(self):
+        r = self.ws.read('Lonesome Dove · 2026', self.book, started='2026-10-04')
+        self.ws.log('UserStatus1', r, self.book, 'Progress', '2026-10-08', page=75)
+        self.ws.log('UserStatus2', r, self.book, 'Progress', '2026-10-12', page=125)
+        self.ws.sync([dnf_item('ReadStatus301', 'Thu, 15 Oct 2026 21:00:00 -0400', '56346987', 'Lonesome Dove')])
+        p = self.ws.n.pages[r]['properties']
+        self.assertEqual((p['Outcome']['select']['name'], p['Pages read']['number'], p['Ended']['date']['start']), ('DNF', 125, '2026-10-15'))
+        self.assertIn('Closed from Goodreads', notes_of(self.ws, r))
+
+    def test_read_with_dans_pages_read_is_not_closed(self):
+        r = self.ws.read('Lonesome Dove · 2026', self.book, started='2026-10-04', pages_read=400)
+        report, _ = self.ws.sync([self.fin])
+        p = self.ws.n.pages[r]['properties']
+        self.assertIsNone(p['Outcome']['select'])
+        q = [q for q in report['questions'] if q['kind'] == 'Finish date'][0]
+        self.assertEqual(q['read'], r)
+        self.assertEqual(len(self.ws.n.creates(LOG_DS)), 1)  # the event itself is logged
+
+    def test_dans_ended_date_is_kept(self):
+        r = self.ws.read('Lonesome Dove · 2026', self.book, started='2026-10-04', ended='2026-10-14')
+        self.ws.sync([self.fin])
+        p = self.ws.n.pages[r]['properties']
+        self.assertEqual((p['Ended']['date']['start'], p['Outcome']['select']['name']), ('2026-10-14', 'Finished'))
+
+    def test_rerun_after_a_close_changes_nothing(self):
+        self.ws.read('Lonesome Dove · 2026', self.book, started='2026-10-04')
+        self.ws.sync([self.fin])
+        n = len(self.ws.n.writes)
+        self.ws.sync([self.fin])
+        self.assertEqual(len(self.ws.n.writes), n + 1)  # only the second run's own Sync run row
+        self.assertEqual(self.ws.n.writes[-1][2]['Kind']['select']['name'], 'Sync run')
+
+    def test_stray_finished_followed_by_progress_is_skipped(self):
+        r = self.ws.read('Lonesome Dove · 2026', self.book, started='2026-10-04')
+        fin = finished_item('ReadStatus302', 'Fri, 09 Oct 2026 21:00:00 -0400', '56346987', 'Lonesome Dove')
+        prog = progress_item('UserStatus303', 'Sun, 11 Oct 2026 21:00:00 -0400', '56346987', 'Lonesome Dove', 114, 964)
+        report, _ = self.ws.sync([fin, prog])
+        p = self.ws.n.pages[r]['properties']
+        self.assertIsNone(p['Outcome']['select'])
+        rows = self.ws.n.creates(LOG_DS)
+        self.assertEqual([x['Kind']['select']['name'] for x in rows], ['Progress'])
+        self.assertIn('Stray Finished from Goodreads 2026-10-09 skipped', notes_of(self.ws, r))
+        self.assertEqual(report['questions'], [])
+        self.ws.sync([fin, prog])  # the same feed again: no second note, no new rows
+        self.assertEqual(notes_of(self.ws, r).count('Stray Finished'), 1)
+        self.assertEqual(len(self.ws.n.creates(LOG_DS)), 1)
+
+
+class ReopenTests(unittest.TestCase):
+    def setUp(self):
+        self.ws = Workspace()
+        self.book = self.ws.book('Lonesome Dove', 'Larry McMurtry')
+        self.prog = progress_item('UserStatus310', 'Mon, 12 Oct 2026 21:00:00 -0400', '56346987', 'Lonesome Dove', 125, 964)
+
+    def test_progress_within_14_days_of_a_sync_close_reopens(self):
+        r = self.ws.read('Lonesome Dove · 2026', self.book, started='2026-10-04', ended='2026-10-09', outcome='Finished', notes='Closed from Goodreads 2026-10-10')
+        report, _ = self.ws.sync([self.prog])
+        p = self.ws.n.pages[r]['properties']
+        self.assertIsNone(p['Outcome']['select'])
+        self.assertIsNone(p['Ended']['date'])
+        self.assertIn('Reopened from Goodreads 2026-10-17: progress continued', notes_of(self.ws, r))
+        self.assertEqual(self.ws.n.creates(LOG_DS)[0]['Read']['relation'][0]['id'], r)
+        self.assertEqual(report['questions'], [])
+        self.assertEqual(len(self.ws.n.creates(READS_DS)), 0)
+
+    def test_reopening_a_sync_dnf_clears_its_pages_read(self):
+        r = self.ws.read('Lonesome Dove · 2026', self.book, started='2026-10-04', ended='2026-10-09', outcome='DNF', pages_read=85, notes='Closed from Goodreads 2026-10-10 (DNF at p.85)')
+        self.ws.log('UserStatus1', r, self.book, 'Progress', '2026-10-09', page=85)
+        self.ws.sync([self.prog])
+        self.assertIsNone(self.ws.n.pages[r]['properties']['Pages read']['number'])
+
+    def test_progress_after_a_dan_close_is_questioned(self):
+        r = self.ws.read('Lonesome Dove · 2026', self.book, started='2026-06-01', ended='2026-10-09', outcome='Finished', pages_read=858)
+        report, _ = self.ws.sync([self.prog])
+        self.assertEqual(self.ws.n.updates(r), [])
+        self.assertEqual(self.ws.n.creates(LOG_DS), [])
+        q = report['questions'][0]
+        self.assertEqual((q['kind'], q['read'], q['default_applied']), ('Reread or reopen', r, False))
+        self.assertIn('2026-10-09', q['question'])
+
+    def test_answer_reopen(self):
+        r = self.ws.read('Lonesome Dove · 2026', self.book, started='2026-06-01', ended='2026-10-09', outcome='Finished', pages_read=858)
+        ev = gs.parse_update(self.prog)
+        row = self.ws.question('Reread or reopen', 'reread or reopen?', 'event:UserStatus310', event=ev, book=self.book, read=r, answer='reopen')
+        self.ws.sync([])
+        p = self.ws.n.pages[r]['properties']
+        self.assertIsNone(p['Outcome']['select'])
+        self.assertIn("Reopened by Dan's answer", notes_of(self.ws, r))
+        self.assertEqual(self.ws.n.creates(LOG_DS)[0]['Read']['relation'][0]['id'], r)
+        self.assertEqual(gs.queue_norm(self.ws.n.retrieve_page(row))['status'], 'Answered')
+
+    def test_answer_reread(self):
+        e1 = self.ws.edition('Lonesome Dove — S&S · Paper', self.book, 'Paper', 'Simon & Schuster')
+        r = self.ws.read('Lonesome Dove · 2026', self.book, started='2026-06-01', ended='2026-10-09', outcome='Finished', pages_read=858, edition=e1)
+        ev = gs.parse_update(self.prog)
+        self.ws.question('Reread or reopen', 'reread or reopen?', 'event:UserStatus310', event=ev, book=self.book, read=r, answer='reread')
+        report, _ = self.ws.sync([])
+        self.assertEqual(self.ws.n.updates(r), [])
+        new = self.ws.n.creates(READS_DS)
+        self.assertEqual(len(new), 1)
+        self.assertEqual(_plain(new[0]['Read']['title']), 'Lonesome Dove · 2026 (reread)')
+        self.assertTrue(new[0]['Dates estimated']['checkbox'])
+        self.assertEqual(new[0]['Edition']['relation'][0]['id'], e1)
+        self.assertEqual([q['kind'] for q in report['questions']], ['Edition'])
+
+    def test_more_than_14_days_is_a_reread(self):
+        e1 = self.ws.edition('Lonesome Dove — S&S · Kindle', self.book, 'Kindle', 'Simon & Schuster')
+        self.ws.edition('Lonesome Dove — S&S · Paper', self.book, 'Paper', 'Simon & Schuster')
+        r = self.ws.read('Lonesome Dove · 2026', self.book, started='2026-06-01', ended='2026-06-30', outcome='Finished', pages_read=858, edition=e1)
+        report, _ = self.ws.sync([self.prog])
+        self.assertEqual(self.ws.n.updates(r), [])
+        new = self.ws.n.creates(READS_DS)
+        self.assertEqual(len(new), 1)
+        self.assertEqual((new[0]['Started']['date']['start'], new[0]['Dates estimated']['checkbox']), ('2026-10-12', True))
+        self.assertEqual((new[0]['Edition']['relation'][0]['id'], new[0]['Edition inferred']['checkbox']), (e1, True))  # the copy of the last Read
+        self.assertIn('Created from Goodreads 2026-10-17', _plain(new[0]['Notes']['rich_text']))
+        q = report['questions'][0]
+        self.assertEqual((q['kind'], q['default_applied']), ('Edition', True))
+        self.assertIn('Kindle', q['proposed'])
+        self.assertIn('Paper', q['options'])
+        rows = self.ws.n.creates(LOG_DS)
+        self.assertEqual(len(rows), 1)
+
+
+class CreateTests(unittest.TestCase):
+    def setUp(self):
+        self.ws = Workspace()
+        self.book = self.ws.book('Lonesome Dove', 'Larry McMurtry')
+        self.start = started_item('ReadStatus320', 'Sun, 04 Oct 2026 21:00:00 -0400', '56346987', 'Lonesome Dove')
+
+    def test_started_creates_a_read_with_the_only_owned_copy(self):
+        e1 = self.ws.edition('Lonesome Dove — S&S · Paper', self.book, 'Paper', 'Simon & Schuster')
+        self.ws.edition('Lonesome Dove — Old · Paper', self.book, 'Paper', 'Old', owned=False, disposed='2024-01-01')
+        report, _ = self.ws.sync([self.start])
+        new = self.ws.n.creates(READS_DS)
+        self.assertEqual(len(new), 1)
+        p = new[0]
+        self.assertEqual(_plain(p['Read']['title']), 'Lonesome Dove · 2026')
+        self.assertEqual((p['Started']['date']['start'], p['Dates estimated']['checkbox']), ('2026-10-04', False))
+        self.assertEqual((p['Edition']['relation'][0]['id'], p['Edition inferred']['checkbox']), (e1, True))
+        self.assertEqual(p['Book']['relation'][0]['id'], self.book)
+        self.assertEqual(_plain(p['Notes']['rich_text']), 'Created from Goodreads 2026-10-17')
+        q = report['questions'][0]
+        self.assertEqual((q['kind'], q['default_applied']), ('Edition', True))
+        self.assertIn('Paper · Simon & Schuster', q['proposed'])
+        self.assertIn('Which copy', q['question'])
+        rows = self.ws.n.creates(LOG_DS)
+        self.assertEqual((len(rows), rows[0]['Kind']['select']['name']), (1, 'Started'))
+
+    def test_two_copies_and_no_history_leave_edition_blank(self):
+        self.ws.edition('Lonesome Dove — S&S · Paper', self.book, 'Paper', 'Simon & Schuster')
+        self.ws.edition('Lonesome Dove — S&S · Kindle', self.book, 'Kindle', 'Simon & Schuster')
+        report, _ = self.ws.sync([self.start])
+        p = self.ws.n.creates(READS_DS)[0]
+        self.assertEqual(p['Edition']['relation'], [])
+        self.assertFalse(p['Edition inferred']['checkbox'])
+        q = report['questions'][0]
+        self.assertEqual((q['kind'], q['default_applied']), ('Edition', False))
+        self.assertIn('Kindle · Simon & Schuster', q['options'])
+        self.assertIn('Paper · Simon & Schuster', q['options'])
+
+    def test_two_copies_default_to_the_last_reads_copy(self):
+        self.ws.edition('Lonesome Dove — S&S · Paper', self.book, 'Paper', 'Simon & Schuster')
+        e2 = self.ws.edition('Lonesome Dove — S&S · Kindle', self.book, 'Kindle', 'Simon & Schuster')
+        self.ws.read('Lonesome Dove · 2025', self.book, started='2025-04-01', ended='2025-05-01', outcome='Finished', pages_read=858, edition=e2)
+        self.ws.sync([self.start])
+        p = self.ws.n.creates(READS_DS)[0]
+        self.assertEqual(_plain(p['Read']['title']), 'Lonesome Dove · 2026')
+        self.assertEqual(p['Edition']['relation'][0]['id'], e2)
+
+    def test_no_copy_at_all_sets_format_read_from_the_last_read(self):
+        self.ws.read('Lonesome Dove · 2025', self.book, started='2025-04-01', ended='2025-05-01', outcome='Finished', pages_read=858)
+        self.ws.n.pages[list(self.ws.n.pages)[-1]]['properties']['Format read'] = {'select': {'name': 'Kindle'}}
+        self.ws.sync([self.start])
+        p = self.ws.n.creates(READS_DS)[0]
+        self.assertEqual(p['Edition']['relation'], [])
+        self.assertEqual(p['Format read']['select']['name'], 'Kindle')
+
+    def test_shelf_start_creates_with_an_estimated_date(self):
+        self.ws.sync([], shelf=[shelf_item('Lonesome Dove', 'Larry McMurtry', book_id='56346987')])
+        p = self.ws.n.creates(READS_DS)[0]
+        self.assertEqual((p['Started']['date']['start'], p['Dates estimated']['checkbox']), ('2026-10-09', True))
+        self.assertIn('estimated', _plain(p['Notes']['rich_text']))
+
+    def test_one_read_per_book_per_run_and_rerun(self):
+        second = started_item('ReadStatus321', 'Sun, 04 Oct 2026 22:00:00 -0400', '56346987', 'Lonesome Dove')
+        self.ws.sync([self.start, second])
+        self.assertEqual(len(self.ws.n.creates(READS_DS)), 1)
+        self.ws.sync([self.start, second])
+        self.assertEqual(len(self.ws.n.creates(READS_DS)), 1)
+        self.assertEqual(len(self.ws.n.creates(LOG_DS)), 1)  # same Read, Kind, date: one row
+
+    def test_progress_with_no_read_at_all_creates_an_estimated_read(self):
+        prog = progress_item('UserStatus322', 'Mon, 12 Oct 2026 21:00:00 -0400', '56346987', 'Lonesome Dove', 125, 964)
+        self.ws.sync([prog])
+        p = self.ws.n.creates(READS_DS)[0]
+        self.assertEqual((p['Started']['date']['start'], p['Dates estimated']['checkbox']), ('2026-10-12', True))
+
+    def test_finished_with_no_read_at_all_is_still_a_question(self):
+        report, _ = self.ws.sync([finished_item('ReadStatus323', 'Thu, 15 Oct 2026 21:00:00 -0400', '56346987', 'Lonesome Dove')])
+        self.assertEqual(self.ws.n.creates(READS_DS), [])
+        self.assertEqual(report['questions'][0]['kind'], 'Finish date')
+
+    def test_dry_run_plans_the_create_and_the_question(self):
+        report, _ = self.ws.sync([self.start], dry_run=True)
+        self.assertEqual(self.ws.n.writes, [])
+        self.assertEqual([(x['op'], x['ds']) for x in report['plan']], [('create', READS_DS), ('create', QUEUE_DS), ('create', LOG_DS)])  # the Read, its question, its Started row
+        self.assertEqual(report['questions'][0]['kind'], 'Edition')
+
+
+class EditionSignalTests(unittest.TestCase):
+    def setUp(self):
+        self.ws = Workspace()
+        self.book = self.ws.book('Lonesome Dove', 'Larry McMurtry')
+        self.e1 = self.ws.edition('Lonesome Dove — S&S · Kindle', self.book, 'Kindle', 'Simon & Schuster')
+        self.ws.edition('Lonesome Dove — S&S · Paper', self.book, 'Paper', 'Simon & Schuster')
+
+    def test_of_pages_change_on_an_open_read_is_a_question_only(self):
+        r = self.ws.read('Lonesome Dove · 2026', self.book, started='2026-10-04', edition=self.e1)
+        self.ws.log('UserStatus1', r, self.book, 'Progress', '2026-10-08', page=75)
+        self.ws.n.pages[list(self.ws.n.pages)[-1]]['properties']['Of pages'] = {'number': 964}
+        prog = progress_item('UserStatus330', 'Mon, 12 Oct 2026 21:00:00 -0400', '99999999', 'Lonesome Dove', 130, 858)
+        report, _ = self.ws.sync([prog])
+        self.assertEqual(self.ws.n.updates(r), [])
+        q = [q for q in report['questions'] if q['kind'] == 'Edition change'][0]
+        self.assertEqual((q['read'], q['default_applied']), (r, True))
+        self.assertIn('858', q['question'])
+        self.assertIn('964', q['question'])
+        self.assertEqual(len(self.ws.n.creates(LOG_DS)), 1)
+        self.assertEqual(self.ws.n.creates(LOG_DS)[0]['Of pages']['number'], 858)
+
+    def test_same_work_under_two_goodreads_ids_across_two_reads(self):
+        r1 = self.ws.read('Lonesome Dove · 2025', self.book, started='2025-04-01', ended='2025-05-01', outcome='Finished', pages_read=858, edition=self.e1)
+        self.ws.log('UserStatus1', r1, self.book, 'Progress', '2025-04-10', page=75)
+        prog = progress_item('UserStatus331', 'Mon, 12 Oct 2026 21:00:00 -0400', '77777777', 'Lonesome Dove (Lonesome Dove, #1)', 130, 1000)
+        report, _ = self.ws.sync([prog])
+        self.assertEqual(self.ws.n.updates(r1), [])  # the old Read and its Edition are untouched
+        new = self.ws.n.creates(READS_DS)
+        self.assertEqual(len(new), 1)
+        self.assertEqual(new[0]['Edition']['relation'][0]['id'], self.e1)
+        self.assertEqual([q['kind'] for q in report['questions']], ['Edition'])
+        self.assertEqual(len(self.ws.n.creates(LOG_DS)), 1)
+
+    def test_closed_reads_edition_is_never_written(self):
+        r1 = self.ws.read('Lonesome Dove · 2025', self.book, started='2025-04-01', ended='2025-05-01', outcome='Finished', pages_read=858, edition=self.e1)
+        row = self.ws.question('Edition change', 'change the copy?', f'edchange:{r1}:1000', book=self.book, read=r1, answer='Paper')
+        self.ws.sync([])
+        self.assertEqual(self.ws.n.updates(r1), [])
+        q = gs.queue_norm(self.ws.n.retrieve_page(row))
+        self.assertEqual(q['status'], 'Open')
+        self.assertIn('could not apply', q['proposed'])
+
+
+class AnswerTests(unittest.TestCase):
+    def setUp(self):
+        self.ws = Workspace()
+        self.book = self.ws.book('Lonesome Dove', 'Larry McMurtry')
+        self.e1 = self.ws.edition('Lonesome Dove — S&S · Kindle', self.book, 'Kindle', 'Simon & Schuster')
+        self.e2 = self.ws.edition('Lonesome Dove — S&S · Paper', self.book, 'Paper', 'Simon & Schuster')
+
+    def test_edition_answer_sets_the_copy_and_clears_inferred(self):
+        r = self.ws.read('Lonesome Dove · 2026', self.book, started='2026-10-04', edition=self.e1, inferred=True, notes='Created from Goodreads 2026-10-16')
+        row = self.ws.question('Edition', 'Which copy?', f'edition:{r}', book=self.book, read=r, answer='Paper', default_applied=True)
+        self.ws.sync([])
+        p = self.ws.n.pages[r]['properties']
+        self.assertEqual((p['Edition']['relation'][0]['id'], p['Edition inferred']['checkbox']), (self.e2, False))
+        self.assertIn('Edition set to Paper · Simon & Schuster by Dan 2026-10-17', notes_of(self.ws, r))
+        self.assertEqual(gs.queue_norm(self.ws.n.retrieve_page(row))['status'], 'Answered')
+
+    def test_edition_confirm_clears_inferred_and_notes_it(self):
+        r = self.ws.read('Lonesome Dove · 2026', self.book, started='2026-10-04', edition=self.e1, inferred=True)
+        self.ws.question('Edition', 'Which copy?', f'edition:{r}', book=self.book, read=r, confirm=True, default_applied=True)
+        self.ws.sync([])
+        p = self.ws.n.pages[r]['properties']
+        self.assertEqual((p['Edition']['relation'][0]['id'], p['Edition inferred']['checkbox']), (self.e1, False))
+        self.assertIn('Confirmed by Dan 2026-10-17', notes_of(self.ws, r))
+
+    def test_edition_answer_that_matches_nothing_stays_open(self):
+        r = self.ws.read('Lonesome Dove · 2026', self.book, started='2026-10-04', edition=self.e1, inferred=True)
+        row = self.ws.question('Edition', 'Which copy?', f'edition:{r}', book=self.book, read=r, answer='Audible', default_applied=True)
+        self.ws.sync([])
+        self.assertEqual(self.ws.n.updates(r), [])
+        q = gs.queue_norm(self.ws.n.retrieve_page(row))
+        self.assertEqual(q['status'], 'Open')
+        self.assertIn('could not apply', q['proposed'])
+
+    def test_pages_read_answer(self):
+        r = self.ws.read('Lonesome Dove · 2026', self.book, started='2026-10-04', ended='2026-10-15', outcome='Finished', notes='Closed from Goodreads 2026-10-16')
+        self.ws.question('Pages read', 'pages?', f'pages:{r}', book=self.book, read=r, answer='858', default_applied=True)
+        self.ws.sync([])
+        p = self.ws.n.pages[r]['properties']
+        self.assertEqual(p['Pages read']['number'], 858)
+        self.assertIn('Pages read 858 by Dan 2026-10-17', notes_of(self.ws, r))
+
+    def test_pages_read_answer_can_correct_the_date(self):
+        r = self.ws.read('Lonesome Dove · 2026', self.book, started='2026-10-04', ended='2026-10-15', outcome='Finished', notes='Closed from Goodreads 2026-10-16')
+        self.ws.question('Pages read', 'pages?', f'pages:{r}', book=self.book, read=r, answer='ended 2026-10-14, 858', default_applied=True)
+        self.ws.sync([])
+        p = self.ws.n.pages[r]['properties']
+        self.assertEqual((p['Pages read']['number'], p['Ended']['date']['start']), (858, '2026-10-14'))
+
+    def test_still_reading_answer_finished(self):
+        r = self.ws.read('Lonesome Dove · 2026', self.book, started='2026-10-04')
+        self.ws.question('Still reading', 'still?', f'still:{r}', book=self.book, read=r, answer='finished 2026-10-15 pages 858', default_applied=True)
+        self.ws.sync([])
+        p = self.ws.n.pages[r]['properties']
+        self.assertEqual((p['Ended']['date']['start'], p['Outcome']['select']['name'], p['Pages read']['number']), ('2026-10-15', 'Finished', 858))
+        self.assertIn("Closed by Dan's answer 2026-10-17", notes_of(self.ws, r))
+
+    def test_still_reading_answer_still(self):
+        r = self.ws.read('Lonesome Dove · 2026', self.book, started='2026-10-04')
+        row = self.ws.question('Still reading', 'still?', f'still:{r}', book=self.book, read=r, answer='still', default_applied=True)
+        self.ws.sync([])
+        self.assertEqual(self.ws.n.updates(r), [])
+        self.assertEqual(gs.queue_norm(self.ws.n.retrieve_page(row))['status'], 'Answered')
+
+    def test_finish_date_answer_close(self):
+        r = self.ws.read('Lonesome Dove · 2026', self.book, started='2026-10-04', pages_read=400)
+        ev = gs.parse_update(finished_item('ReadStatus340', 'Thu, 15 Oct 2026 21:00:00 -0400', '56346987', 'Lonesome Dove'))
+        self.ws.question('Finish date', 'close?', 'event:ReadStatus340', event=ev, book=self.book, read=r, answer='close')
+        self.ws.sync([])
+        p = self.ws.n.pages[r]['properties']
+        self.assertEqual((p['Ended']['date']['start'], p['Outcome']['select']['name'], p['Pages read']['number']), ('2026-10-15', 'Finished', 400))
 
 
 if __name__ == '__main__':

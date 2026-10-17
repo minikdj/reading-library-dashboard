@@ -256,12 +256,126 @@
      ]
     }
    }
+  },
+  {
+   "op": "create",
+   "ds": "05439130-377c-4e0b-948e-7c1d7ffb065e",
+   "props": {
+    "Read": {
+     "title": [
+      {
+       "text": {
+        "content": "Lonesome Dove · 2026 (reread)"
+       }
+      }
+     ]
+    },
+    "Book": {
+     "relation": [
+      {
+       "id": "3fb1b15c8b778179b9d3ec6156cde60b"
+      }
+     ]
+    },
+    "Started": {
+     "date": {
+      "start": "2026-10-09"
+     }
+    },
+    "Dates estimated": {
+     "checkbox": true
+    },
+    "Notes": {
+     "rich_text": [
+      {
+       "text": {
+        "content": "Created from Goodreads 2026-10-17 (start date estimated from the currently-reading shelf)"
+       }
+      }
+     ]
+    },
+    "Edition": {
+     "relation": [
+      {
+       "id": "3fb1b15c8b7781a28a7ae3091cd16f11"
+      }
+     ]
+    },
+    "Edition inferred": {
+     "checkbox": true
+    }
+   }
+  },
+  {
+   "op": "create",
+   "ds": "ced88101-f6c5-4e4e-9c1f-8305afeb2e7e",
+   "props": {
+    "Name": {
+     "title": [
+      {
+       "text": {
+        "content": "Lonesome Dove · Started · 2026-10-09"
+       }
+      }
+     ]
+    },
+    "Book": {
+     "relation": [
+      {
+       "id": "3fb1b15c8b778179b9d3ec6156cde60b"
+      }
+     ]
+    },
+    "When": {
+     "date": {
+      "start": "2026-10-09"
+     }
+    },
+    "Kind": {
+     "select": {
+      "name": "Started"
+     }
+    },
+    "Source": {
+     "select": {
+      "name": "Goodreads"
+     }
+    },
+    "Goodreads id": {
+     "rich_text": [
+      {
+       "text": {
+        "content": "Shelf7521001057:started:2026-10-09"
+       }
+      }
+     ]
+    },
+    "Raw": {
+     "rich_text": [
+      {
+       "text": {
+        "content": "currently-reading shelf: Lonesome Dove (Lonesome Dove, #1), added Fri, 09 Oct 2026 19:04:19 -0700, read at 2026-10-09"
+       }
+      }
+     ]
+    },
+    "Read": {
+     "relation": [
+      {
+       "id": "planned"
+      }
+     ]
+    },
+    "Of pages": {
+     "number": 964
+    }
+   }
   }
  ],
  "questions": [
   [
-   "No open Read",
-   "event:Shelf7521001057:started:2026-10-09"
+   "Edition",
+   "edition:planned"
   ]
  ]
 }

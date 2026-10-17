@@ -442,6 +442,7 @@ class Library:
         self.books = []
         self.authors = {}
         self.raw_reads = []
+        self.raw_editions = []
 
     def load_rows(self, rows):
         """rows: [{'id', 'title', 'authors': [names]}]"""
@@ -470,6 +471,11 @@ class Library:
         for b in json.loads(rd.joinpath('books.json').read_text(encoding='utf-8')):
             rows.append({'id': pid(b['url']), 'title': b.get('Title') or '', 'authors': [self.authors.get(pid(u), '') for u in json.loads(b.get('Author') or '[]')]})
         self.load_rows(rows)
+        self.raw_editions = []
+        for e in json.loads(rd.joinpath('editions.json').read_text(encoding='utf-8')):
+            self.raw_editions.append({'id': pid(e['url']), 'title': e.get('Edition') or '', 'books': [pid(u) for u in json.loads(e.get('Book') or '[]')],
+                                      'format': e.get('Format') or None, 'publisher': e.get('Publisher') or '', 'year': e.get('Year'),
+                                      'owned': e.get('Owned') == '__YES__' and not e.get('date:Disposed:start')})
         for r in json.loads(rd.joinpath('reads.json').read_text(encoding='utf-8')):
             bk = json.loads(r.get('Book') or '[]')
             self.raw_reads.append({'id': pid(r['url']), 'book': pid(bk[0]) if bk else None, 'title': r.get('Read') or '', 'outcome': r.get('Outcome') or None,
@@ -520,6 +526,20 @@ def read_norm(page):
             'notes': prop_text(p.get('Notes'))}
 
 
+def edition_norm(page):
+    p = page['properties']
+    return {'id': page['id'], 'title': prop_text(p.get('Edition')), 'books': prop_rel(p.get('Book')), 'format': prop_select(p.get('Format')),
+            'publisher': prop_text(p.get('Publisher')), 'year': prop_number(p.get('Year')),
+            'owned': prop_checkbox(p.get('Owned')) and not prop_date(p.get('Disposed'))}
+
+
+def copy_label(ed):
+    """How a copy is named in questions: 'Kindle · Simon & Schuster', or the Edition title."""
+    if not ed:
+        return 'none'
+    return ' · '.join(x for x in (ed.get('format'), ed.get('publisher')) if x) or ed.get('title') or ed['id']
+
+
 KIND_NAME = {'started': 'Started', 'progress': 'Progress', 'finished': 'Finished', 'dnf': 'DNF'}
 
 
@@ -538,15 +558,31 @@ class Store:
         self.now = now_iso()
         self.today = today or local_date(self.now)
         self.seen_guids, self.seen_keys, self.plan = set(), set(), []
+        self.seen_rows = {}   # read id -> log rows written this run
+        self.reads = {}       # read id -> the Read as this run last left it (created, closed, reopened)
 
     # ---- reads
+    def _overlay(self, reads):
+        return [self.reads.get(r['id'], r) for r in reads]
+
     def _reads(self, flt):
-        return [read_norm(r) for r in self.notion.query_all(cfg('NOTION_READS_DS'), flt)]
+        return self._overlay([read_norm(r) for r in self.notion.query_all(cfg('NOTION_READS_DS'), flt)])
 
     def reads_for_book(self, book_id):
         if self.notion:
-            return self._reads({'property': 'Book', 'relation': {'contains': book_id}})
-        return [dict(r) for r in self.lib.raw_reads if r['book'] == book_id]
+            rs = self._reads({'property': 'Book', 'relation': {'contains': book_id}})
+        else:
+            rs = self._overlay([dict(r) for r in self.lib.raw_reads if r['book'] == book_id])
+        known = {r['id'] for r in rs}
+        rs += [r for r in self.reads.values() if r.get('book') == book_id and r['id'] not in known]  # created this run (dry runs)
+        return rs
+
+    def read(self, read_id):
+        if read_id in self.reads:
+            return self.reads[read_id]
+        if self.notion:
+            return read_norm(self.notion.retrieve_page(read_id))
+        return next((dict(r) for r in self.lib.raw_reads if r['id'] == read_id), None)
 
     def open_read(self, book_id):
         rs = [r for r in self.reads_for_book(book_id) if not r['outcome']]
@@ -559,8 +595,26 @@ class Store:
 
     def all_open(self):
         if self.notion:
-            return self._reads({'property': 'Outcome', 'select': {'is_empty': True}})
-        return [dict(r) for r in self.lib.raw_reads if not r['outcome']]
+            rs = self._reads({'property': 'Outcome', 'select': {'is_empty': True}})
+        else:
+            rs = self._overlay([dict(r) for r in self.lib.raw_reads if not r['outcome']])
+        return [r for r in rs if not r['outcome']]
+
+    def create_read(self, book, props):
+        """Create a Read (invariant: only ever an open one, from a Goodreads start); returns it in read_norm shape."""
+        res = self._create(cfg('NOTION_READS_DS'), props)
+        read = {'id': res.get('id') or 'planned', 'title': prop_text(props['Read']), 'outcome': None, 'started': prop_date(props.get('Started')),
+                'ended': None, 'book': book['id'], 'dates_estimated': prop_checkbox(props.get('Dates estimated')), 'edition': prop_rel(props.get('Edition')),
+                'edition_inferred': prop_checkbox(props.get('Edition inferred')), 'pages_read': None, 'format_read': prop_select(props.get('Format read')),
+                'notes': prop_text(props.get('Notes'))}
+        self.reads[read['id']] = read
+        return read
+
+    # ---- editions
+    def editions_for_book(self, book_id):
+        if self.notion:
+            return [edition_norm(e) for e in self.notion.query_all(cfg('NOTION_EDITIONS_DS'), {'property': 'Book', 'relation': {'contains': book_id}})]
+        return [dict(e) for e in self.lib.raw_editions if book_id in e['books']]
 
     # ---- reading log
     def already_logged(self, guid):
@@ -571,14 +625,15 @@ class Store:
         return bool(self.notion.query_all(cfg('NOTION_LOG_DS'), {'property': 'Goodreads id', 'rich_text': {'equals': guid}}, page_size=1))
 
     def log_rows(self, read_id, kind_name):
-        """Rows already in the Reading log for this Read and Kind (Notion plus this run), as (date, page) keys."""
-        keys = {(k[2], k[3]) for k in self.seen_keys if k[0] == read_id and k[1] == kind_name}
+        """Rows already in the Reading log for this Read and Kind (Notion plus this run): [{date, page, total}], oldest first."""
+        rows = [dict(r) for r in self.seen_rows.get(read_id, []) if r['kind'] == kind_name]
         if self.notion:
             for r in self.notion.query_all(cfg('NOTION_LOG_DS'), {'and': [
                     {'property': 'Read', 'relation': {'contains': read_id}}, {'property': 'Kind', 'select': {'equals': kind_name}}]}):
                 p = r['properties']
-                keys.add((local_date(prop_date(p.get('When'))), prop_number(p.get('Page'))))
-        return keys
+                rows.append({'kind': kind_name, 'date': local_date(prop_date(p.get('When'))), 'page': prop_number(p.get('Page')), 'total': prop_number(p.get('Of pages'))})
+        rows.sort(key=lambda r: r['date'] or '')
+        return rows
 
     def log_exists(self, read_id, kind_name, date, page, any_date=False):
         """The secondary dedupe key: a row on the same Read with the same Kind, local date and Page
@@ -586,12 +641,17 @@ class Store:
         if log_key(read_id, kind_name, date, page) in self.seen_keys:
             return True
         rows = self.log_rows(read_id, kind_name)
-        return bool(rows) if any_date else (date, page) in rows
+        return bool(rows) if any_date else any((r['date'], r['page']) == (date, page) for r in rows)
+
+    def last_progress_page(self, read_id):
+        pages = [r['page'] for r in self.log_rows(read_id, 'Progress') if r['page'] is not None]
+        return pages[-1] if pages else None
 
     def create_log(self, ev, book, read):
         props = log_props(ev, book, read)
         self.seen_guids.add(ev['guid'])
         self.seen_keys.add(log_key(read['id'], KIND_NAME[ev['kind']], local_date(ev['at']), ev.get('page')))
+        self.seen_rows.setdefault(read['id'], []).append({'kind': KIND_NAME[ev['kind']], 'date': local_date(ev['at']), 'page': ev.get('page'), 'total': ev.get('total')})
         return self._create(cfg('NOTION_LOG_DS'), props)
 
     # ---- writes
@@ -609,12 +669,15 @@ class Store:
             return {'id': page_id}
         return self.notion.update_page(page_id, props)
 
-    def update_read(self, read, props, note):
-        """Change a Read and append the reason to its Notes (invariant 3)."""
+    def stamp(self, text):
+        return f'{text} from Goodreads {self.today}'
+
+    def update_read(self, read, props, line):
+        """Change a Read and append the reason (one line, dated) to its Notes (invariant 3)."""
         notes = (read.get('notes') or '').rstrip()
-        line = f'{note} from Goodreads {self.today}'
         props = dict(props, Notes=rt((notes + '\n' + line) if notes else line))
         read['notes'] = (notes + '\n' + line) if notes else line
+        self.reads[read['id']] = read
         return self._update(read['id'], props)
 
 
@@ -779,15 +842,22 @@ class SyncQueue:
 
 # ---------------------------------------------------------------- the run
 HEX32 = re.compile(r'^[0-9a-f]{32}$')
+REOPEN_DAYS = 14   # a Read closed by the sync is reopened by progress within this many days; later progress is a reread
+AGREE_DAYS = 2     # a Finished/DNF attaches quietly to a closed Read whose Ended is this close
+SYNC_CLOSE_NOTE = 'Closed from Goodreads'
 
 
 class Run:
-    """One sync: match events to Books and Reads, write log rows and Read changes, ask questions."""
+    """One sync: match events to Books and Reads, write log rows and Read changes, ask questions.
+
+    Reads are created on a Started (or a currently-reading shelf item), closed on Finished / DNF, reopened
+    by progress within REOPEN_DAYS of a close the sync made; everything else is a question with the
+    default already applied (docs/SYNC_REVIEW.md, "Question policy")."""
 
     def __init__(self, store, lib, queue, state):
         self.store, self.lib, self.queue, self.state = store, lib, queue, state
         self.books_by_id = {b['id']: b for b in lib.books}
-        self.written = self.already = 0
+        self.written = self.already = self.strays = 0
         self.unmatched = []
 
     # ---- lookups
@@ -819,60 +889,221 @@ class Run:
         hits = [r for r in reads if r['title'].lower() == a.lower()] or [r for r in reads if r['title'].lower().startswith(a.lower())]
         return hits[0] if len(hits) == 1 else None
 
+    def edition_from_answer(self, book_id, answer):
+        a = answer.strip().lower()
+        eds = self.store.editions_for_book(book_id)
+        if HEX32.match(a.replace('-', '')):
+            return next((e for e in eds if e['id'] == a.replace('-', '')), None)
+        hits = [e for e in eds if a == (e['format'] or '').lower() or a == copy_label(e).lower() or a in e['title'].lower()
+                or (e['publisher'] and a in e['publisher'].lower())]
+        owned = [e for e in hits if e['owned']]
+        hits = owned or hits
+        return hits[0] if len(hits) == 1 else None
+
+    def edition_default(self, book_id, reads):
+        """The copy a new Read gets: the only owned copy, else the copy of the most recent Read, else none."""
+        eds = self.store.editions_for_book(book_id)
+        owned = [e for e in eds if e['owned']]
+        if len(owned) == 1:
+            return owned[0], eds, 'the only owned copy'
+        by_id = {e['id']: e for e in eds}
+        for r in sorted(reads, key=lambda r: r['ended'] or r['started'] or '', reverse=True):
+            for eid in r.get('edition') or []:
+                if eid in by_id:
+                    return by_id[eid], eds, f"the copy of {r['title']}"
+        return None, eds, 'no owned copy' if not owned else f'{len(owned)} owned copies'
+
+    # ---- Read changes (invariant 2: only these)
+    def create_read(self, book, day, estimated, why):
+        reads = self.store.reads_for_book(book['id'])
+        title = f"{book['title']} · {day[:4]}"
+        taken = {r['title'] for r in reads}
+        if title in taken:
+            title += ' (reread)'
+            n = 2
+            while title in taken:
+                title = f"{book['title']} · {day[:4]} (reread {n})"
+                n += 1
+        ed, eds, how = self.edition_default(book['id'], reads)
+        note = f'Created from Goodreads {self.store.today}' + (f' ({why})' if why else '')
+        props = {'Read': {'title': [{'text': {'content': title[:200]}}]}, 'Book': {'relation': [{'id': book['id']}]},
+                 'Started': {'date': {'start': day}}, 'Dates estimated': {'checkbox': bool(estimated)}, 'Notes': rt(note),
+                 'Edition': {'relation': [{'id': ed['id']}] if ed else []}, 'Edition inferred': {'checkbox': bool(ed)}}
+        fmt = None
+        if not ed:
+            by_id = {e['id']: e for e in eds}
+            for r in sorted(reads, key=lambda r: r['ended'] or r['started'] or '', reverse=True):
+                fmt = r.get('format_read') or next((by_id[e]['format'] for e in (r.get('edition') or []) if e in by_id and by_id[e]['format']), None)
+                if fmt:
+                    break
+            if fmt:
+                props['Format read'] = {'select': {'name': fmt}}
+        read = self.store.create_read(book, props)
+        log('created Read', title, '-', f'Started {day}' + (' (estimated)' if estimated else ''), '-', 'copy:', copy_label(ed), f'({how})')
+        owned = [copy_label(e) for e in eds if e['owned']]
+        self.queue.ask('Edition', f'Which copy are you reading “{book["title"]}” in? [default: {copy_label(ed)}]', f'edition:{read["id"]}',
+                       book=book['id'], read=read['id'], default_applied=bool(ed),
+                       proposed=(copy_label(ed) + f' ({how})') if ed else ('blank' + (f'; Format read {fmt}' if fmt else '') + f' ({how})'),
+                       options=' / '.join(owned + ['other (name it)']) + '; Confirm keeps the default')
+        return read
+
+    def close_read(self, read, kind, day, book, ev=None, pages=None, by_dan=False, force=False):
+        """Close an open Read (Ended, Outcome; Pages read on DNF from the log). Dan's Pages read or Ended are never changed."""
+        if read['outcome']:
+            return False
+        kind_name = KIND_NAME.get(kind, kind)
+        if read.get('pages_read') is not None and not force and not by_dan:
+            self.queue.ask('Finish date', f'Goodreads says {kind_name} “{book["title"]}” on {day}, but the open Read {read["title"]} already has Pages read {read["pages_read"]:g} (yours): close it?',
+                           'event:' + (ev['guid'] if ev else f'{read["id"]}:{day}'), book=book['id'], read=read['id'], default_applied=True,
+                           proposed='left open', options="Answer 'close' to close it on that date, or 'drop'", event=ev)
+            return False
+        props = {'Outcome': {'select': {'name': kind_name}}}
+        ended = read.get('ended')
+        if not ended:
+            props['Ended'] = {'date': {'start': day}}
+            ended = day
+        last = None
+        if kind == 'dnf' and pages is None and read.get('pages_read') is None:
+            last = self.store.last_progress_page(read['id'])
+            if last is not None:
+                props['Pages read'] = {'number': last}
+        if pages is not None:
+            props['Pages read'] = {'number': pages}
+        line = f"Closed by Dan's answer {self.store.today}" if by_dan else f'Closed from Goodreads {self.store.today}' + (f' (DNF at p.{last})' if last is not None else '')
+        self.store.update_read(read, props, line)
+        read['outcome'], read['ended'] = kind_name, ended
+        if 'Pages read' in props:
+            read['pages_read'] = props['Pages read']['number']
+        log(f"closed {read['title']}: {kind_name}, Ended {ended}" + (f', Pages read {read["pages_read"]:g}' if read.get('pages_read') is not None else ''))
+        if not by_dan:
+            shown = f'{read["pages_read"]:g}' if read.get('pages_read') is not None else 'blank'
+            self.queue.ask('Pages read', f'{kind_name} “{book["title"]}” on {ended}; pages read = {shown}?', f'pages:{read["id"]}',
+                           book=book['id'], read=read['id'], default_applied=True, proposed=f'Ended {ended}, Pages read {shown}',
+                           options="Answer a page count, 'ended YYYY-MM-DD' to correct the date, or both; Confirm keeps it")
+        return True
+
+    def sync_closed(self, read):
+        """Closed by the sync and not since taken over by Dan (Pages read is blank, or is the DNF page the sync wrote)."""
+        if SYNC_CLOSE_NOTE not in (read.get('notes') or ''):
+            return False
+        if read.get('pages_read') is None:
+            return True
+        return read['outcome'] == 'DNF' and read['pages_read'] == self.store.last_progress_page(read['id'])
+
+    def reopen(self, read, line):
+        props = {'Outcome': {'select': None}, 'Ended': {'date': None}}
+        if read['outcome'] == 'DNF' and read.get('pages_read') is not None and read['pages_read'] == self.store.last_progress_page(read['id']):
+            props['Pages read'] = {'number': None}  # the sync's own DNF figure
+            read['pages_read'] = None
+        self.store.update_read(read, props, line)
+        read['outcome'], read['ended'] = None, None
+        log('reopened', read['title'], '-', line)
+        return read
+
     # ---- one event
-    def handle(self, ev, book=None, read=None):
-        """Write one event. Returns {'status': logged | already | unmatched | no_read | skipped, ...}."""
+    def handle(self, ev, book=None, read=None, force_new=False, force_reopen=False, stray=False):
+        """Write one event. Returns {'status': logged | already | stray | unmatched | no_read | finish_mismatch | reread_or_reopen | skipped, ...}."""
         if ev['kind'] not in KIND_NAME:
             log('skipped', ev['kind'], ev['title'], '(not handled yet)')
             return {'status': 'skipped'}
+        kind = ev['kind']
         if not book:
             book, why = self.find_book(ev)
             if not book:
-                log('UNMATCHED', ev['kind'], ev['title'], '-', why)
+                log('UNMATCHED', kind, ev['title'], '-', why)
                 return {'status': 'unmatched', 'why': why}
         if ev['gr_book_id']:
             self.state['book_cache'][ev['gr_book_id']] = book['id']
         day = local_date(ev['at'])
+        kind_name = KIND_NAME[kind]
         if not read:
             read = self.store.open_read(book['id'])
-        if not read and ev['kind'] in ('finished', 'dnf'):
+        if stray:
+            target = read or self.store.recent_read(book['id'])
+            marker = f'Stray {kind_name} from Goodreads {day} skipped'
+            if target and marker not in (target.get('notes') or ''):
+                self.store.update_read(target, {}, f'{marker}: progress continued ({self.store.today})')
+            log('STRAY', kind_name, book['title'], day, '- later progress in the same feed; skipped')
+            return {'status': 'stray', 'book': book, 'read': target}
+        if not read and day:
             recent = self.store.recent_read(book['id'])
-            if recent and recent['outcome'] and recent['ended'] and day:
-                if days_between(recent['ended'], day) <= 2:
-                    read = recent  # Dan's own entry; the event attaches quietly
+            if recent and recent['outcome'] and recent['ended']:
+                gap = days_between(recent['ended'], day)
+                if day <= recent['ended']:
+                    # the event lies inside (or before) a closed Read: recovered history, never a new Read
+                    if kind in ('finished', 'dnf') and gap <= AGREE_DAYS:
+                        read = recent
+                    elif kind in ('finished', 'dnf'):
+                        log('FINISH DATE DIFFERS', book['title'], day, 'vs', recent['title'], recent['ended'])
+                        return {'status': 'finish_mismatch', 'book': book, 'read': recent, 'why': f"Notion's {recent['title']} ended {recent['ended']}, Goodreads says {day}"}
+                    elif recent['started'] and day >= recent['started']:
+                        read = recent
+                elif kind in ('finished', 'dnf'):
+                    if gap <= AGREE_DAYS:
+                        read = recent  # Dan's own entry; the event attaches quietly
+                    elif gap <= REOPEN_DAYS and not force_new:
+                        log('FINISH DATE DIFFERS', book['title'], day, 'vs', recent['title'], recent['ended'])
+                        return {'status': 'finish_mismatch', 'book': book, 'read': recent, 'why': f"Notion's {recent['title']} ended {recent['ended']}, Goodreads says {day}"}
+                    else:
+                        read = self.create_read(book, day, True, f'{kind_name} on a reread with no Started event; start date estimated')
+                elif gap <= REOPEN_DAYS and not force_new:
+                    if force_reopen or self.sync_closed(recent):
+                        read = self.reopen(recent, f"Reopened by Dan's answer {self.store.today}" if force_reopen else f'Reopened from Goodreads {self.store.today}: progress continued')
+                    else:
+                        log('PROGRESS AFTER A CLOSE', book['title'], day, 'vs', recent['title'], recent['ended'])
+                        return {'status': 'reread_or_reopen', 'book': book, 'read': recent, 'why': f"{recent['title']} was finished on {recent['ended']}"}
                 else:
-                    log('FINISH DATE DIFFERS', book['title'], day, 'vs', recent['title'], recent['ended'])
-                    return {'status': 'finish_mismatch', 'book': book, 'read': recent, 'why': f"Notion's {recent['title']} ended {recent['ended']}, Goodreads says {day}"}
+                    read = self.create_read(book, day, kind != 'started' or bool(ev.get('estimated')),
+                                            'start date estimated from the currently-reading shelf' if ev.get('estimated') else
+                                            ('progress on a read with no Started event; start date estimated' if kind != 'started' else ''))
+            elif not recent:
+                if kind in ('finished', 'dnf'):
+                    log('NO READ AT ALL', kind, book['title'])
+                    return {'status': 'no_read', 'book': book, 'why': f"no Read of {book['title']} in Notion"}
+                read = self.create_read(book, day, kind != 'started' or bool(ev.get('estimated')),
+                                        'start date estimated from the currently-reading shelf' if ev.get('estimated') else
+                                        ('progress on a read with no Started event; start date estimated' if kind != 'started' else ''))
         if not read:
-            log('NO OPEN READ', ev['kind'], book['title'])
+            log('NO OPEN READ', kind, book['title'])
             return {'status': 'no_read', 'book': book, 'why': f"no open Read in Notion for {book['title']}"}
+        # a changed Goodreads page total on an open Read is an edition signal: question only (never an edit)
+        if kind == 'progress' and ev.get('total') and not read['outcome']:
+            prior = [r['total'] for r in self.store.log_rows(read['id'], 'Progress') if r['total']]
+            if prior and prior[-1] != ev['total']:
+                eds = self.store.editions_for_book(book['id'])
+                current = next((e for e in eds if e['id'] in (read.get('edition') or [])), None)
+                self.queue.ask('Edition change', f'Goodreads now shows “{book["title"]}” with {ev["total"]} pages (was {prior[-1]:g}); the Read keeps its copy ({copy_label(current)}). Change it?',
+                               f'edchange:{read["id"]}:{ev["total"]}', book=book['id'], read=read['id'], default_applied=True, proposed='unchanged',
+                               options=' / '.join(copy_label(e) for e in eds if e['owned']) + '; Confirm keeps it')
         if self.store.already_logged(ev['guid']):
             status = 'already'
             log('already in the log', ev['guid'])
-        elif self.store.log_exists(read['id'], KIND_NAME[ev['kind']], day, ev.get('page')):
+        elif self.store.log_exists(read['id'], kind_name, day, ev.get('page')):
             status = 'already'
             log('already in the log (same Read, Kind, date and Page)', ev['guid'])
-        elif ev.get('estimated') and self.store.log_exists(read['id'], KIND_NAME[ev['kind']], day, None, any_date=True):
+        elif ev.get('estimated') and self.store.log_exists(read['id'], kind_name, day, None, any_date=True):
             status = 'already'  # a shelf date only recovers a start the feed never gave; the Read already has one
             log('already in the log (a Started row exists; the shelf date is only a guess)', ev['guid'])
         else:
             self.store.create_log(ev, book, read)
             status = 'logged'
-            log('logged', ev['kind'], book['title'], ev.get('page') or ev.get('percent') or '', '->', read['title'])
-        if ev['kind'] == 'started' and day:
+            log('logged', kind, book['title'], ev.get('page') or ev.get('percent') or '', '->', read['title'])
+        if kind == 'started' and day:
             old = read.get('started')
             if ev.get('estimated'):
                 # a shelf date is when the book was shelved, not when the reading began: fill a blank only, keep the guess flagged
                 if not old:
                     self.store.update_read(read, {'Started': {'date': {'start': day}}, 'Dates estimated': {'checkbox': True}},
-                                           f'Started {day} (estimated, from the currently-reading shelf)')
+                                           self.store.stamp(f'Started {day} (estimated, from the currently-reading shelf)'))
                     read['started'], read['dates_estimated'] = day, True
                     log(f"set estimated Started {day} on {read['title']} from the shelf")
-            elif not old or read.get('dates_estimated'):
+            elif (not old or read.get('dates_estimated')) and (old != day or read.get('dates_estimated')):
                 self.store.update_read(read, {'Started': {'date': {'start': day}}, 'Dates estimated': {'checkbox': False}},
-                                       f'Started {day}' + (f' (was estimated {old})' if old else ''))
+                                       self.store.stamp(f'Started {day}' + (f' (was estimated {old})' if old and old != day else '')))
                 read['started'], read['dates_estimated'] = day, False
                 log(f"replaced estimated Started {old} with {day} on {read['title']}" if old else f"set Started {day} on {read['title']}")
+        if kind in ('finished', 'dnf') and day and not read['outcome']:
+            self.close_read(read, kind, day, book, ev=ev)
         return {'status': status, 'book': book, 'read': read}
 
     def count(self, res):
@@ -880,6 +1111,8 @@ class Run:
             self.written += 1
         elif res['status'] == 'already':
             self.already += 1
+        elif res['status'] == 'stray':
+            self.strays += 1
 
     def question_for(self, ev, res):
         """Queue the question an event that could not be written needs (nothing is guessed)."""
@@ -890,30 +1123,37 @@ class Run:
             if res['why'].startswith('several'):
                 options += '. Candidates: ' + res['why'].split(': ', 1)[1]
             self.unmatched.append({**ev, 'reason': res['why']})
-            return self.queue.ask('Unmatched book', f'Which Book is \u201c{ev["title"]}\u201d{who}? Goodreads {kind_name} on {day}: {res["why"]}',
+            return self.queue.ask('Unmatched book', f'Which Book is “{ev["title"]}”{who}? Goodreads {kind_name} on {day}: {res["why"]}',
                                   'event:' + ev['guid'], options=options, event=ev)
         if res['status'] == 'finish_mismatch':
             book, read = res['book'], res['read']
             self.unmatched.append({**ev, 'reason': res['why'], 'book_id': book['id']})
-            return self.queue.ask('Finish date', f'Goodreads says {kind_name} \u201c{book["title"]}\u201d on {day}; Notion\u2019s {read["title"]} ended {read["ended"]}',
+            return self.queue.ask('Finish date', f'Goodreads says {kind_name} “{book["title"]}” on {day}; Notion’s {read["title"]} ended {read["ended"]}',
                                   'event:' + ev['guid'], book=book['id'], read=read['id'], default_applied=True,
                                   proposed=f"left as is: Ended {read['ended']} kept, the Goodreads {kind_name} not logged",
                                   options="Answer 'attach' to log it to that Read anyway, a Read title, or 'drop'", event=ev)
+        if res['status'] == 'reread_or_reopen':
+            book, read = res['book'], res['read']
+            self.unmatched.append({**ev, 'reason': res['why'], 'book_id': book['id']})
+            return self.queue.ask('Reread or reopen', f'Goodreads shows you back on “{book["title"]}” ({kind_name} {day}) after you finished it on {read["ended"]}: reread, or reopen?',
+                                  'event:' + ev['guid'], book=book['id'], read=read['id'], proposed='nothing done until answered',
+                                  options="Answer 'reopen' (clears Ended and Outcome on that Read) or 'reread' (a new Read), or 'drop'", event=ev)
         if res['status'] == 'no_read':
             book = res['book']
             last = self.store.recent_read(book['id'])
             proposed = (f"last Read in Notion: {last['title']} ({last['outcome'] or 'open'}" + (f", ended {last['ended']}" if last['ended'] else '') + ')') if last else 'no Read of this Book in Notion'
             self.unmatched.append({**ev, 'reason': res['why'], 'book_id': book['id']})
             if ev['kind'] in ('finished', 'dnf'):
-                return self.queue.ask('Finish date', f'Goodreads {kind_name} \u201c{book["title"]}\u201d on {day}, but Notion has no Read of it to close',
-                                      'event:' + ev['guid'], book=book['id'], options="Answer with the Read to attach it to (its title), or 'drop'", proposed=proposed, event=ev)
-            return self.queue.ask('No open Read', f'Goodreads {kind_name} on \u201c{book["title"]}\u201d {day}, but Notion has no open Read',
+                return self.queue.ask('Finish date', f'Goodreads {kind_name} “{book["title"]}” on {day}, but Notion has no Read of it to close',
+                                      'event:' + ev['guid'], book=book['id'], options="Answer with the Read to attach it to (its title), 'new' for a new Read closed on that date, or 'drop'",
+                                      proposed=proposed, event=ev)
+            return self.queue.ask('No open Read', f'Goodreads {kind_name} on “{book["title"]}” {day}, but Notion has no open Read',
                                   'event:' + ev['guid'], book=book['id'], options="Answer with the Read to attach it to (its title), or 'drop'", proposed=proposed, event=ev)
         return None
 
     # ---- the queue
     def apply_answers(self):
-        """Rows Dan answered or confirmed since the last run are applied first (step 2: unmatched events; later kinds in later steps)."""
+        """Rows Dan answered or confirmed since the last run are applied first."""
         for row in list(self.queue.open_rows()):
             answer, confirm = (row['answer'] or '').strip(), row['confirm']
             if not answer and not confirm:
@@ -921,38 +1161,127 @@ class Run:
             if answer.lower() in DROP_ANSWERS:
                 self.queue.resolve(row, 'Dismissed')
                 continue
-            if row['kind'] in ('Unmatched book', 'No open Read', 'Finish date') and row['event']:
-                if not answer:
-                    self.queue.resolve(row, 'Answered', answer='confirmed: event left unlogged')
-                    continue
-                ev, book, read = row['event'], None, None
-                if row['kind'] == 'Unmatched book':
-                    book = self.book_from_answer(answer)
-                    if not book:
-                        self.queue.note(row, f'could not apply \u201c{answer}\u201d: no single Book with that title')
-                        continue
+            kind, ev = row['kind'], row['event']
+            read = self.store.read(row['read']) if row.get('read') else None
+            book = self.books_by_id.get(row.get('book'))
+            try:
+                if ev and kind in ('Unmatched book', 'No open Read', 'Finish date', 'Reread or reopen'):
+                    self.apply_event_answer(row, answer, confirm, kind, ev, book, read)
+                elif kind in ('Edition', 'Edition change'):
+                    self.apply_edition_answer(row, answer, confirm, kind, book, read)
+                elif kind == 'Pages read':
+                    self.apply_pages_answer(row, answer, confirm, read)
+                elif kind == 'Still reading':
+                    self.apply_still_reading_answer(row, answer, confirm, book, read)
                 else:
-                    book = self.books_by_id.get(row['book'])
-                    if answer.lower() == 'attach' and row['read']:
-                        read = next((r for r in self.store.reads_for_book(row['book']) if r['id'] == row['read']), None)
-                    else:
-                        read = self.read_from_answer(answer, row['book'])
-                    if not book or not read:
-                        self.queue.note(row, f'could not apply \u201c{answer}\u201d: no Read of that title on the Book')
-                        continue
-                res = self.handle(ev, book=book, read=read)
-                self.count(res)
-                if res['status'] in ('logged', 'already'):
-                    self.queue.resolve(row, 'Answered', proposed=f"applied: logged to {res['read']['title']}")
-                else:
-                    self.queue.note(row, f'could not apply \u201c{answer}\u201d: {res.get("why", res["status"])}')
-                continue
-            self.queue.resolve(row, 'Answered')  # confirmed or answered; nothing further to apply for this kind yet
+                    self.queue.resolve(row, 'Answered')  # Gap and the like: confirmed or answered, nothing to apply
+            except RuntimeError as e:
+                log('ERROR applying answer', row['key'], e)
+
+    def apply_event_answer(self, row, answer, confirm, kind, ev, book, read):
+        if not answer:
+            self.queue.resolve(row, 'Answered', answer='confirmed: event left unlogged')
+            return
+        a = answer.lower()
+        day = local_date(ev['at'])
+        if kind == 'Unmatched book':
+            book = self.book_from_answer(answer)
+            if not book:
+                self.queue.note(row, f'could not apply “{answer}”: no single Book with that title')
+                return
+            res = self.handle(ev, book=book)
+        elif kind == 'Reread or reopen':
+            if a == 'reopen' and read:
+                res = self.handle(ev, book=book, force_reopen=True)
+            elif a == 'reread':
+                res = self.handle(ev, book=book, force_new=True)
+            else:
+                self.queue.note(row, f'could not apply “{answer}”: answer reopen, reread or drop')
+                return
+        elif kind == 'Finish date' and a == 'close' and read:
+            self.close_read(read, ev['kind'], day, book, ev=ev, force=True)
+            res = self.handle(ev, book=book, read=read)
+        elif kind == 'Finish date' and a == 'new':
+            res = self.handle(ev, book=book, force_new=True)
+        else:
+            target = read if (a == 'attach' and read) else self.read_from_answer(answer, row['book'])
+            if not book or not target:
+                self.queue.note(row, f'could not apply “{answer}”: no Read of that title on the Book')
+                return
+            res = self.handle(ev, book=book, read=target)
+        self.count(res)
+        if res['status'] in ('logged', 'already'):
+            self.queue.resolve(row, 'Answered', proposed=f"applied: logged to {res['read']['title']}")
+        else:
+            self.queue.note(row, f'could not apply “{answer}”: {res.get("why", res["status"])}')
+
+    def apply_edition_answer(self, row, answer, confirm, kind, book, read):
+        if not read or not book:
+            self.queue.note(row, 'could not apply: the Read or Book no longer exists')
+            return
+        if answer:
+            if read.get('edition') and not read.get('edition_inferred'):
+                self.queue.note(row, f'could not apply “{answer}”: the copy on {read["title"]} was set by you; change it by chat')
+                return
+            if kind == 'Edition change' and read['outcome']:
+                self.queue.note(row, f'could not apply “{answer}”: {read["title"]} is closed; a closed Read’s copy changes only by chat')
+                return
+            ed = self.edition_from_answer(book['id'], answer)
+            if not ed:
+                self.queue.note(row, f'could not apply “{answer}”: no single copy of {book["title"]} matches')
+                return
+            self.store.update_read(read, {'Edition': {'relation': [{'id': ed['id']}]}, 'Edition inferred': {'checkbox': False}},
+                                   f'Edition set to {copy_label(ed)} by Dan {self.store.today}')
+            read['edition'], read['edition_inferred'] = [ed['id']], False
+            self.queue.resolve(row, 'Answered', proposed=f'applied: {copy_label(ed)}')
+            return
+        if read.get('edition') and read.get('edition_inferred'):
+            self.store.update_read(read, {'Edition inferred': {'checkbox': False}}, f'Confirmed by Dan {self.store.today}')
+            read['edition_inferred'] = False
+        self.queue.resolve(row, 'Answered', answer='confirmed')
+
+    def apply_pages_answer(self, row, answer, confirm, read):
+        if not read:
+            self.queue.note(row, 'could not apply: the Read no longer exists')
+            return
+        if not answer:
+            self.store.update_read(read, {}, f'Confirmed by Dan {self.store.today}')
+            self.queue.resolve(row, 'Answered', answer='confirmed')
+            return
+        m_end = re.search(r'ended\s+(\d{4}-\d\d-\d\d)', answer, re.I)
+        m_pages = re.search(r'(?<![\d-])(\d{1,5})(?![\d-])', re.sub(r'\d{4}-\d\d-\d\d', '', answer))
+        if not m_end and not m_pages:
+            self.queue.note(row, f'could not apply “{answer}”: answer a page count and/or ended YYYY-MM-DD')
+            return
+        props, lines = {}, []
+        if m_pages:
+            props['Pages read'] = {'number': int(m_pages.group(1))}
+            lines.append(f'Pages read {int(m_pages.group(1))}')
+        if m_end:
+            props['Ended'] = {'date': {'start': m_end.group(1)}}
+            lines.append(f'Ended {m_end.group(1)}')
+        self.store.update_read(read, props, ', '.join(lines) + f' by Dan {self.store.today}')
+        self.queue.resolve(row, 'Answered', proposed='applied: ' + ', '.join(lines))
+
+    def apply_still_reading_answer(self, row, answer, confirm, book, read):
+        if not read:
+            self.queue.note(row, 'could not apply: the Read no longer exists')
+            return
+        if not answer or answer.lower() in ('still', 'still reading', 'yes', 'reading'):
+            self.queue.resolve(row, 'Answered', answer=answer or 'confirmed: still reading')
+            return
+        m = re.match(r'(finished|dnf)\s+(\d{4}-\d\d-\d\d)(?:[\s,]*pages?\s*(\d+))?', answer, re.I)
+        if not m or not book:
+            self.queue.note(row, f'could not apply “{answer}”: answer still, finished YYYY-MM-DD [pages N] or dnf YYYY-MM-DD [pages N]')
+            return
+        kind = m.group(1).lower()
+        self.close_read(read, kind, m.group(2), book, pages=int(m.group(3)) if m.group(3) else None, by_dan=True)
+        self.queue.resolve(row, 'Answered', proposed=f'applied: {KIND_NAME[kind]} {m.group(2)}')
 
     def retry_pending(self):
         """Events that could not be written on an earlier run are tried again; the fix (a Read, a Book) usually came by chat."""
         for row in list(self.queue.open_rows()):
-            if row['kind'] not in ('Unmatched book', 'No open Read', 'Finish date') or not row['event'] or row['status'] != 'Open':
+            if row['kind'] not in ('Unmatched book', 'No open Read', 'Finish date', 'Reread or reopen') or not row['event'] or row['status'] != 'Open':
                 continue
             res = self.handle(row['event'])
             self.count(res)
@@ -960,10 +1289,19 @@ class Run:
                 self.queue.resolve(row, 'Answered', answer=f"auto: logged to {res['read']['title']}")
 
     def feed(self, events):
-        for ev in sorted(events, key=lambda e: e['at'] or ''):
-            res = self.handle(ev)
+        events = sorted(events, key=lambda e: e['at'] or '')
+        strays = set()
+        for i, ev in enumerate(events):
+            if ev['kind'] not in ('finished', 'dnf'):
+                continue
+            key = ev['gr_book_id'] or norm(ev['title'])
+            later = [e for e in events[i + 1:] if e['kind'] in ('progress', 'started') and (e['gr_book_id'] or norm(e['title'])) == key and (e['at'] or '') > (ev['at'] or '')]
+            if later:
+                strays.add(ev['guid'])
+        for ev in events:
+            res = self.handle(ev, stray=ev['guid'] in strays)
             self.count(res)
-            if res['status'] in ('unmatched', 'no_read', 'finish_mismatch'):
+            if res['status'] in ('unmatched', 'no_read', 'finish_mismatch', 'reread_or_reopen'):
                 self.question_for(ev, res)
 
     # ---- shelves (state), consulted only inside the fence
@@ -1071,7 +1409,7 @@ def run_sync(notion, items, shelves, state, *, dry_run=False, offline_lib=None, 
         run.feed(shelf_evs)
     if 'currently-reading' in shelves:
         run.still_reading(shelves['currently-reading'])
-    summary = {'at': now, 'items': len(items), 'new': len(events), 'fenced_out': fenced_out, 'written': run.written, 'already': run.already,
+    summary = {'at': now, 'items': len(items), 'new': len(events), 'fenced_out': fenced_out, 'written': run.written, 'already': run.already, 'strays': run.strays,
                'unmatched': len(run.unmatched), 'asked': len(queue.asked), 'window': window, 'watermark': watermark,
                'shelves': {k: len(v) for k, v in shelves.items()}}
     queue.record_run(summary)
