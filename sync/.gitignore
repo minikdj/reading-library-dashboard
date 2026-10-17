@@ -7,3 +7,4 @@ fixtures/live_*.html
 backfill/timelines/
 backfill/plan.json
 backfill/applied.json
+backfill/reviews.json
