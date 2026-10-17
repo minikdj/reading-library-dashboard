@@ -171,15 +171,63 @@ def feed_urls():
     return urls
 
 
-def fetch_shelf(url, max_pages=1):
+def fetch_with_retry(url, fetcher=None, sleep=time.sleep, tries=3):
+    """Fetch with three attempts and a short backoff; raises the last error."""
+    fetcher = fetcher or fetch
+    last = None
+    for attempt in range(tries):
+        try:
+            return fetcher(url, timeout=30)
+        except Exception as e:  # URLError, HTTPError, timeouts, bad XML upstream
+            last = e
+            log(f'fetch failed ({attempt + 1}/{tries}): {url.split("?")[0]} - {e}')
+            if attempt + 1 < tries:
+                sleep(5 * (attempt + 1))
+    raise last
+
+
+def fetch_shelf(url, max_pages=1, fetcher=None, sleep=time.sleep):
     """A shelf feed, page by page (200 items each) until a short page; the to-read shelf needs every page."""
     items = []
     for page in range(1, max_pages + 1):
-        chunk = rss_items(fetch(url.format(page=page)))
+        chunk = rss_items(fetch_with_retry(url.format(page=page), fetcher=fetcher, sleep=sleep))
         items.extend(chunk)
         if len(chunk) < 200:
             break
     return items
+
+
+def gather(urls, fixtures, fetcher=None, sleep=time.sleep, fetch_missing=True):
+    """The updates feed and the shelves, from fixtures where given, else fetched. Returns
+    (items or None when the updates feed failed, {shelf: items} for the shelves obtained, [what failed])."""
+    failed, shelves = [], {}
+    if fixtures.get('updates'):
+        items = rss_items(Path(fixtures['updates']).read_bytes())
+    else:
+        try:
+            items = rss_items(fetch_with_retry(urls['updates'], fetcher=fetcher, sleep=sleep))
+        except Exception as e:
+            log('CHECK updates feed unavailable:', e)
+            items, failed = None, ['updates']
+    for shelf in SHELVES:
+        if fixtures.get(shelf):
+            shelves[shelf] = rss_items(Path(fixtures[shelf]).read_bytes())
+        elif fetch_missing and urls.get(shelf):
+            try:
+                shelves[shelf] = fetch_shelf(urls[shelf], max_pages=10 if shelf == 'to-read' else 1, fetcher=fetcher, sleep=sleep)
+            except Exception as e:
+                log(f'CHECK {shelf} shelf unavailable:', e)
+                failed.append(shelf)
+    return items, shelves, failed
+
+
+def exit_code(report):
+    """0 when the run did its work (even partially), 2 when nothing could be fetched, 1 when a Notion write failed."""
+    if report.get('errors'):
+        return 1
+    if report.get('nothing_fetched'):
+        return 2
+    return 0
 
 
 SHELVES = ('currently-reading', 'read', 'did-not-finish', 'to-read')
@@ -916,8 +964,17 @@ class Run:
         self.store, self.lib, self.queue, self.state = store, lib, queue, state
         self.books_by_id = {b['id']: b for b in lib.books}
         self.written = self.already = self.strays = 0
-        self.unmatched = []
+        self.unmatched, self.errors = [], []
         self.to_read_by_id = {}
+
+    def guarded(self, label, fn, *a, **kw):
+        """Run one step; a Notion error is recorded and the rest of the run goes on (the watermark then stays put)."""
+        try:
+            return fn(*a, **kw)
+        except RuntimeError as e:
+            log('ERROR', label, '-', e)
+            self.errors.append(f'{label}: {e}')
+            return {'status': 'error', 'why': str(e)}
 
     # ---- lookups
     def find_book(self, ev):
@@ -1310,6 +1367,7 @@ class Run:
                     self.queue.resolve(row, 'Answered')  # Gap and the like: confirmed or answered, nothing to apply
             except RuntimeError as e:
                 log('ERROR applying answer', row['key'], e)
+                self.errors.append(f"answer {row['key']}: {e}")
 
     def apply_event_answer(self, row, answer, confirm, kind, ev, book, read):
         if not answer:
@@ -1416,7 +1474,7 @@ class Run:
         for row in list(self.queue.open_rows()):
             if row['kind'] not in ('Unmatched book', 'No open Read', 'Finish date', 'Reread or reopen') or not row['event'] or row['status'] != 'Open':
                 continue
-            res = self.handle(row['event'])
+            res = self.guarded(f"pending {row['key']}", self.handle, row['event'])
             self.count(res)
             if res['status'] in ('logged', 'already'):
                 self.queue.resolve(row, 'Answered', answer=f"auto: logged to {res['read']['title']}")
@@ -1432,10 +1490,10 @@ class Run:
             if later:
                 strays.add(ev['guid'])
         for ev in events:
-            res = self.handle(ev, stray=ev['guid'] in strays)
+            res = self.guarded(ev['guid'], self.handle, ev, stray=ev['guid'] in strays)
             self.count(res)
             if res['status'] in ('unmatched', 'no_read', 'finish_mismatch', 'reread_or_reopen'):
-                self.question_for(ev, res)
+                self.guarded(f"question {ev['guid']}", self.question_for, ev, res)
 
     # ---- shelves (state), consulted only inside the fence
     def shelf_events(self, shelf, items, watermark, open_books):
@@ -1497,7 +1555,7 @@ def feed_window(items):
     return {'oldest': times[0] if times else None, 'newest': times[-1] if times else None, 'n': len(items)}
 
 
-def run_sync(notion, items, shelves, state, *, dry_run=False, offline_lib=None, now=None, since=None):
+def run_sync(notion, items, shelves, state, *, dry_run=False, offline_lib=None, now=None, since=None, partial=False):
     """Match and write one batch of feed items and fenced shelf items. `notion` is a Notion (or a test
     double); None with `offline_lib` for an offline plan. `shelves` maps shelf name -> items (only the
     shelves fetched). Returns the report; the writes are in report['plan']."""
@@ -1521,6 +1579,11 @@ def run_sync(notion, items, shelves, state, *, dry_run=False, offline_lib=None, 
     else:
         watermark = None
     log(f'watermark: {watermark or "none (first run: whole feed)"}' + (f' (last run {last["asked"]})' if last else ''))
+    if last and last['asked'] and days_between(last['asked'], local_date(now)) > 2:
+        log(f'CHECK no successful run since {last["asked"]}')
+        queue.ask('Gap', f'No successful sync since {local_date(last["asked"])}: events between then and now may have aged out of the updates feed',
+                  'norun:' + last['asked'], default_applied=True, proposed='noted; the shelves recover starts and finishes, page updates may be missing (docs/GAP_FILL.md)',
+                  options='Tick Confirm once checked')
     window = feed_window(items)
     last_window = ((last or {}).get('event') or {}).get('window') or {}
     if window['oldest'] and last_window.get('newest') and to_dt(window['oldest']) > to_dt(last_window['newest']):
@@ -1550,8 +1613,11 @@ def run_sync(notion, items, shelves, state, *, dry_run=False, offline_lib=None, 
     removed = run.wishlist_removed(shelves['to-read']) if 'to-read' in shelves else []
     summary = {'at': now, 'items': len(items), 'new': len(events), 'fenced_out': fenced_out, 'written': run.written, 'already': run.already, 'strays': run.strays,
                'unmatched': len(run.unmatched), 'asked': len(queue.asked), 'window': window, 'watermark': watermark,
-               'shelves': {k: len(v) for k, v in shelves.items()}}
-    queue.record_run(summary)
+               'shelves': {k: len(v) for k, v in shelves.items()}, 'partial': partial, 'errors': run.errors}
+    if partial or run.errors:
+        log('watermark not advanced:', 'partial run' if partial else f'{len(run.errors)} error(s)')
+    else:
+        queue.record_run(summary)
     open_questions = [q for q in queue.open_rows(refresh=True) if q['status'] == 'Open'] if (queue.enabled and not dry_run) else list(queue.open_rows())
     return {**summary, 'unmatched': run.unmatched, 'questions': queue.asked, 'open_questions': open_questions, 'wishlist_removed': removed, 'plan': store.plan}
 
@@ -1566,22 +1632,21 @@ def run(args):
         print('Add that line to sync/.env and to the workflow env (and as the default in goodreads_sync.py).')
         return 0
     state = load_state()
-    fixtures = {'currently-reading': args.shelf_fixture, 'read': args.read_fixture, 'did-not-finish': args.dnf_fixture, 'to-read': args.to_read_fixture}
-    urls = feed_urls() if not (args.fixture and all(fixtures.values())) else {}
-    shelves = {}
-    try:
-        items = rss_items(Path(args.fixture).read_bytes() if args.fixture else fetch(urls['updates']))
-        if not args.parse_only:
-            for shelf in SHELVES:
-                if fixtures[shelf]:
-                    shelves[shelf] = rss_items(Path(fixtures[shelf]).read_bytes())
-                elif not args.fixture or args.fetch_shelves:
-                    shelves[shelf] = fetch_shelf(urls[shelf], max_pages=10 if shelf == 'to-read' else 1)
-    except Exception as e:
-        sys.exit(f'could not fetch Goodreads: {e}')
-    if not args.fixture and not args.no_archive:
+    fixtures = {'updates': args.fixture, 'currently-reading': args.shelf_fixture, 'read': args.read_fixture, 'did-not-finish': args.dnf_fixture, 'to-read': args.to_read_fixture}
+    urls = feed_urls() if not (args.fixture and (args.parse_only or all(fixtures[s] for s in SHELVES) or not args.fetch_shelves)) else {}
+    if args.parse_only:
+        items = rss_items(Path(args.fixture).read_bytes()) if args.fixture else rss_items(fetch_with_retry(urls['updates']))
+        for e in (parse_update(it) for it in items):
+            if e:
+                print(json.dumps(e, ensure_ascii=False))
+        return 0
+    items, shelves, failed = gather(urls, fixtures, fetch_missing=bool(urls))
+    nothing_fetched = items is None and not shelves
+    if items is not None and not args.fixture and not args.no_archive:
         n = archive_items(ARCHIVE_DIR, items, local_date(now_iso()))
         log(f'feed archive: {n} new item(s) in {ARCHIVE_DIR.name}/')
+    if failed:
+        log('CHECK partial fetch; failed:', ', '.join(failed), '- answers, pending events and the other feeds still run; the watermark stays')
     if args.parse_only:
         for e in (parse_update(it) for it in items):
             if e:
@@ -1595,7 +1660,8 @@ def run(args):
     if offline:
         lib = Library(None)
         lib.load_raw(args.offline_library)
-    report = run_sync(notion, items, shelves, state, dry_run=args.dry_run, offline_lib=lib, since=args.since)
+    report = run_sync(notion, items or [], shelves, state, dry_run=args.dry_run, offline_lib=lib, since=args.since, partial=bool(failed))
+    report['nothing_fetched'] = nothing_fetched
     if args.plan:
         Path(args.plan).write_text(json.dumps(report['plan'], indent=1, ensure_ascii=False) + '\n', encoding='utf-8')
         log(f"{len(report['plan'])} planned write(s) saved to {args.plan}")
@@ -1611,8 +1677,9 @@ def run(args):
         state['runs'] = (state.get('runs') or [])[-30:] + [{k: report[k] for k in ('at', 'new', 'written', 'asked', 'fenced_out')} | {'unmatched': len(report['unmatched'])}]
         save_state(state)
     log(f"done: {report['written']} logged, {report['already']} already there, {len(report['unmatched'])} unmatched, {len(report['questions'])} question(s) asked, "
-        f"{len(report['open_questions'])} open, {report['fenced_out']} outside the fence" + (' (dry run, nothing saved)' if args.dry_run or offline else ''))
-    return 0
+        f"{len(report['open_questions'])} open, {report['fenced_out']} outside the fence" + (' (dry run, nothing saved)' if args.dry_run or offline else '')
+        + (f"; {len(report['errors'])} ERROR(S)" if report['errors'] else '') + ('; NOTHING FETCHED' if nothing_fetched else ''))
+    return exit_code(report)
 
 
 def parse_args(argv=None):

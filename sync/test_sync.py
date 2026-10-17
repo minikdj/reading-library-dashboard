@@ -1375,5 +1375,94 @@ class WishlistTests(unittest.TestCase):
         self.assertEqual([o['name'] for o in report['plan'][0]['props']['Lists']['multi_select']], ['Goodreads WTR'])
 
 
+# ---------------------------------------------------------------- step 6: hardening
+class FetchTests(unittest.TestCase):
+    def test_fetch_retries_then_succeeds(self):
+        calls = []
+
+        def flaky(url, timeout=30):
+            calls.append(url)
+            if len(calls) < 3:
+                raise OSError('timed out')
+            return b'<rss><channel></channel></rss>'
+        self.assertEqual(gs.fetch_with_retry('http://x', fetcher=flaky, sleep=lambda s: None), b'<rss><channel></channel></rss>')
+        self.assertEqual(len(calls), 3)
+
+    def test_fetch_gives_up_after_three_tries(self):
+        calls = []
+
+        def dead(url, timeout=30):
+            calls.append(url)
+            raise OSError('no route')
+        with self.assertRaises(OSError):
+            gs.fetch_with_retry('http://x', fetcher=dead, sleep=lambda s: None)
+        self.assertEqual(len(calls), 3)
+
+    def test_gather_reports_what_failed(self):
+        def fetcher(url, timeout=30):
+            if 'updates_rss' in url:
+                raise OSError('down')
+            return (FIX / 'live_shelf_currently-reading_1.xml').read_bytes() if 'currently-reading' in url else b'<rss><channel></channel></rss>'
+        os.environ['GOODREADS_USER_ID'] = '1'
+        items, shelves, failed = gs.gather(gs.feed_urls(), {}, fetcher=fetcher, sleep=lambda s: None)
+        self.assertIsNone(items)
+        self.assertEqual(sorted(shelves), ['currently-reading', 'did-not-finish', 'read', 'to-read'])
+        self.assertEqual(failed, ['updates'])
+
+
+class PartialRunTests(unittest.TestCase):
+    def setUp(self):
+        self.ws = Workspace()
+        self.book = self.ws.book('Lonesome Dove', 'Larry McMurtry')
+
+    def test_updates_feed_down_still_applies_answers_and_shelves_but_keeps_the_watermark(self):
+        r = self.ws.read('Lonesome Dove · 2026', self.book, started='2026-10-04', ended='2026-10-15', outcome='Finished', notes='Closed from Goodreads 2026-10-16')
+        self.ws.question('Pages read', 'pages?', f'pages:{r}', book=self.book, read=r, answer='858', default_applied=True)
+        report, _ = self.ws.sync([], shelf=[], partial=True)
+        self.assertEqual(self.ws.n.pages[r]['properties']['Pages read']['number'], 858)
+        self.assertEqual(self.ws.queue_rows(kind='Sync run'), [])  # no watermark advance on a partial run
+        self.assertTrue(report['partial'])
+
+    def test_a_notion_error_on_one_event_does_not_stop_the_others(self):
+        self.ws.read('Lonesome Dove · 2026', self.book, started='2026-10-04')
+        b2 = self.ws.book('Middlemarch', 'George Eliot')
+        self.ws.read('Middlemarch · 2026', b2, started='2026-10-01')
+        bad = progress_item('UserStatus600', 'Mon, 12 Oct 2026 21:00:00 -0400', '56346987', 'Lonesome Dove', 125, 964)
+        good = progress_item('UserStatus601', 'Mon, 12 Oct 2026 22:00:00 -0400', '19089', 'Middlemarch', 10, 900)
+        real_create = self.ws.n.create_page
+
+        def create(ds, props):
+            if ds == LOG_DS and _plain(props['Goodreads id']['rich_text']) == 'UserStatus600':
+                raise RuntimeError('Notion POST /pages -> 502')
+            return real_create(ds, props)
+        self.ws.n.create_page = create
+        report, _ = self.ws.sync([bad, good])
+        self.assertEqual(len(self.ws.n.creates(LOG_DS)), 1)
+        self.assertEqual(len(report['errors']), 1)
+        self.assertIn('UserStatus600', report['errors'][0])
+        self.assertEqual(self.ws.queue_rows(kind='Sync run'), [])  # the watermark stays, so the failed event is retried next run
+
+    def test_stale_last_run_is_flagged(self):
+        sync_run_row(self.ws, '2026-10-10T23:45:00-04:00')
+        report, _ = self.ws.sync([], now='2026-10-17T23:45:00-04:00')
+        gaps = [q for q in report['questions'] if q['kind'] == 'Gap']
+        self.assertEqual(len(gaps), 1)
+        self.assertEqual(gaps[0]['key'], 'norun:2026-10-10T23:45:00-04:00')
+        self.assertIn('2026-10-10', gaps[0]['question'])
+
+    def test_recent_last_run_is_not_flagged(self):
+        sync_run_row(self.ws, '2026-10-16T23:45:00-04:00')
+        report, _ = self.ws.sync([], now='2026-10-17T23:45:00-04:00')
+        self.assertEqual([q for q in report['questions'] if q['kind'] == 'Gap'], [])
+
+
+class ExitCodeTests(unittest.TestCase):
+    def test_exit_code(self):
+        self.assertEqual(gs.exit_code({'partial': False, 'errors': [], 'nothing_fetched': False}), 0)
+        self.assertEqual(gs.exit_code({'partial': True, 'errors': [], 'nothing_fetched': False}), 0)   # something was done
+        self.assertEqual(gs.exit_code({'partial': True, 'errors': [], 'nothing_fetched': True}), 2)    # nothing could be done
+        self.assertEqual(gs.exit_code({'partial': False, 'errors': ['x'], 'nothing_fetched': False}), 1)  # a write failed
+
+
 if __name__ == '__main__':
     unittest.main()
