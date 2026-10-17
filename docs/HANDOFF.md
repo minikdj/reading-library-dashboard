@@ -15,7 +15,7 @@ I'm Dan. I'm moving my reading-library project into this environment so I can it
 
 ## 2. Get up to speed
 
-- Read `CLAUDE.md`, then `README.md`, then `docs/SPEC.md`, then `docs/handoff.md` (the original brief with the counting rules).
+- Read `CLAUDE.md`, then `README.md`, then `docs/SPEC.md`, then `docs/brief.md` (the original brief with the counting rules).
 - Read the Notion runbook page `3fb1b15c8b7781409d37e348858b0b04` ("Library runbook (for Claude)") through the Notion MCP connector. It is the source of truth for the data model and procedures. If the Notion connector isn't available in this session, tell me and we'll add it before touching data.
 - Skim `pipeline/analyze.py` (the rules as code) and `dashboard/index.html` (the page) so you can explain how a number on the dashboard is produced.
 - Then give me a short summary: what's in the repo, what the dashboard shows, the three data caveats that most limit it, and the open items from the spec.

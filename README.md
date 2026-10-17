@@ -17,7 +17,7 @@ dashboard/datasets.json  dataset titles, descriptions and the artifact blob id e
 dashboard/make_docs.py   writes the store documents for an ArtifactData batch write
 data/raw/              books, editions, reads, authors as pulled from Notion (2026-10-16)
 data/out/              computed stats; data/out/ds/ the attached datasets
-docs/handoff.md        the original brief and counting rules
+docs/brief.md          the original brief and counting rules
 docs/lists/            Steve's lists as matched, the tag plan, the missing-works research
 ```
 
