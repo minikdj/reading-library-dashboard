@@ -23,7 +23,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from goodreads_sync import Library, Notion, cfg, load_env, log, log_props, squeeze  # noqa: E402
+from goodreads_sync import Library, Notion, cfg, load_env, local_date, log, log_key, log_props, prop_date, prop_number, prop_rel, prop_select, prop_text, squeeze  # noqa: E402,E501
 
 HERE = Path(__file__).resolve().parent / 'backfill'
 ROW = re.compile(r'^(?P<date>[A-Z][a-z]+ \d{1,2}, \d{4}) – (?P<what>.+)$')
@@ -50,10 +50,10 @@ def parse_rows(rows):
         elif what.startswith('page '):
             pm = PAGE.match(what)
             if pm:
-                ev = {'kind': 'progress', 'page': int(pm.group('page')), 'percent': round(float(pm.group('pct'))) if pm.group('pct') else None, 'note': squeeze(pm.group('note')) if pm.group('note') else None}
+                ev = {'kind': 'progress', 'page': int(pm.group('page')), 'percent': round(float(pm.group('pct')), 1) if pm.group('pct') else None, 'note': squeeze(pm.group('note')) if pm.group('note') else None}
         elif PCT.match(what):
             pm = PCT.match(what)
-            ev = {'kind': 'progress', 'percent': round(float(pm.group('pct'))), 'note': squeeze(pm.group('note')) if pm.group('note') else None}
+            ev = {'kind': 'progress', 'percent': round(float(pm.group('pct')), 1), 'note': squeeze(pm.group('note')) if pm.group('note') else None}
         if ev:
             ev.update({'date': d, 'raw': raw})
             out.append(ev)
@@ -153,39 +153,53 @@ def apply(plan_path, dry_run):
     load_env()
     plan = json.loads(plan_path.read_text(encoding='utf-8'))
     notion = Notion(cfg('NOTION_TOKEN', required=True), dry_run=dry_run)
-    log_ds = cfg('NOTION_LOG_DS', required=True)
     done_path = plan_path.with_name('applied.json')
     done = json.loads(done_path.read_text(encoding='utf-8')) if done_path.exists() else {'rows': [], 'started': []}
-    # rows already in the log (by Goodreads id) are skipped, so the run can be repeated safely
-    existing = set()
-    for pg in notion.query_all(log_ds, {'property': 'Goodreads id', 'rich_text': {'starts_with': 'Timeline'}}):
-        existing.add(''.join(t.get('plain_text', '') for t in pg['properties'].get('Goodreads id', {}).get('rich_text', [])))
-    log(f'{len(plan["log_rows"])} rows in plan, {len(existing)} timeline rows already in the log')
+    apply_plan(plan, notion, cfg('NOTION_LOG_DS', required=True), done, dry_run, done_path=done_path)
+    return 0
+
+
+def row_key(props):
+    """The secondary dedupe key of a Reading log row: (Read, Kind, local date, Page)."""
+    read = (prop_rel(props.get('Read')) or [None])[0]
+    return log_key(read, prop_select(props.get('Kind')), local_date(prop_date(props.get('When'))), prop_number(props.get('Page')))
+
+
+def apply_plan(plan, notion, log_ds, done, dry_run, done_path=None):
+    """Write plan rows to Notion, skipping any already there by Goodreads id or by Read + Kind + date + Page.
+    Returns the number of rows created."""
+    existing_ids, existing_keys = set(), set()
+    for pg in notion.query_all(log_ds):
+        existing_ids.add(prop_text(pg['properties'].get('Goodreads id')))
+        existing_keys.add(row_key(pg['properties']))
+    log(f'{len(plan["log_rows"])} rows in plan, {len(existing_ids)} rows already in the log')
     n = 0
     for row in plan['log_rows']:
-        guid = row['props']['Goodreads id']['rich_text'][0]['text']['content']
-        if guid in existing or guid in done['rows']:
+        guid = prop_text(row['props']['Goodreads id'])
+        key = row_key(row['props'])
+        if guid in existing_ids or guid in done['rows'] or key in existing_keys:
             continue
         notion.create_page(log_ds, row['props'])
+        existing_keys.add(key)
         n += 1
         if not dry_run:
             done['rows'].append(guid)
-            if n % 50 == 0:
+            if n % 50 == 0 and done_path:
                 done_path.write_text(json.dumps(done), encoding='utf-8')
                 log(f'  {n} rows written')
     log(f'{n} Reading log rows created')
     m = 0
-    for u in plan['started_updates']:
+    for u in plan.get('started_updates', []):
         if u['read'] in done['started']:
             continue
         notion.update_page(u['read'], {'Started': {'date': {'start': u['started']}}, 'Dates estimated': {'checkbox': False}})
         m += 1
         if not dry_run:
             done['started'].append(u['read'])
-    if not dry_run:
+    if not dry_run and done_path:
         done_path.write_text(json.dumps(done), encoding='utf-8')
     log(f'{m} Reads got a Started date' + (' (dry run)' if dry_run else ''))
-    return 0
+    return n
 
 
 if __name__ == '__main__':
