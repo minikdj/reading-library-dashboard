@@ -167,11 +167,22 @@ def feed_urls():
     q = ('&key=' + urllib.parse.quote(key)) if key else ''
     urls = {'updates': f'https://www.goodreads.com/user/updates_rss/{uid}?{q.lstrip("&")}'.rstrip('?')}
     for shelf in SHELVES:
-        urls[shelf] = f'https://www.goodreads.com/review/list_rss/{uid}?shelf={shelf}&per_page=200&page=1{q}'
+        urls[shelf] = f'https://www.goodreads.com/review/list_rss/{uid}?shelf={shelf}&per_page=200&page={{page}}{q}'
     return urls
 
 
-SHELVES = ('currently-reading', 'read', 'did-not-finish')
+def fetch_shelf(url, max_pages=1):
+    """A shelf feed, page by page (200 items each) until a short page; the to-read shelf needs every page."""
+    items = []
+    for page in range(1, max_pages + 1):
+        chunk = rss_items(fetch(url.format(page=page)))
+        items.extend(chunk)
+        if len(chunk) < 200:
+            break
+    return items
+
+
+SHELVES = ('currently-reading', 'read', 'did-not-finish', 'to-read')
 FENCE_MARGIN_HOURS = 48
 ARCHIVE_DIR = HERE / 'feed_archive'
 
@@ -216,7 +227,7 @@ def rss_items(xml_bytes):
                     'book_id': t('book_id'), 'isbn': t('isbn'), 'isbn13': t('isbn13'),
                     'author_name': t('author_name'), 'num_pages': t('book/num_pages') or t('num_pages'),
                     'user_read_at': t('user_read_at'), 'user_date_added': t('user_date_added'),
-                    'user_date_created': t('user_date_created'), 'user_shelves': t('user_shelves')})
+                    'user_date_created': t('user_date_created'), 'user_shelves': t('user_shelves'), 'book_published': t('book_published')})
     return out
 
 
@@ -393,6 +404,20 @@ def rt(s):
 
 # ---------------------------------------------------------------- matching
 STOP = re.compile(r'^(the|a|an)\s+', re.I)
+GR_IN_NOTES = re.compile(r'\bGR (\d+)')
+WTR = 'Goodreads WTR'
+
+
+def sort_name(name):
+    """'Michael D. Coogan' -> 'Coogan, Michael D.' (the Authors convention); one-word names stay as they are."""
+    parts = squeeze(name).split(' ')
+    suffixes = {'jr', 'jr.', 'sr', 'sr.', 'ii', 'iii'}
+    tail = []
+    while len(parts) > 2 and parts[-1].lower() in suffixes:
+        tail.insert(0, parts.pop())
+    if len(parts) < 2:
+        return name
+    return f"{parts[-1]}, {' '.join(parts[:-1])}" + (f" {' '.join(tail)}" if tail else '')
 YEAR_RANGE = re.compile(r',?\s*\d{4}\s*[-–]\s*\d{4}\s*$')
 VOLUME = re.compile(r'\b(?:vol(?:ume)?\.?|book)\s*\d+\b', re.I)
 
@@ -445,19 +470,27 @@ class Library:
         self.raw_editions = []
 
     def load_rows(self, rows):
-        """rows: [{'id', 'title', 'authors': [names]}]"""
+        """rows: [{'id', 'title', 'authors': [names], 'lists'?, 'wishlisted'?, 'gr_id'?}]"""
         for r in rows:
-            names = [x for x in r.get('authors') or [] if x]
-            self.books.append({'id': r['id'], 'title': r['title'], 'norm': norm(r['title']), 'main': main_title(r['title']),
-                               'authors': names, 'surnames': {surname(x) for x in names}})
+            self.add_book(r)
+
+    def add_book(self, r):
+        names = [x for x in r.get('authors') or [] if x]
+        book = {'id': r['id'], 'title': r['title'], 'norm': norm(r['title']), 'main': main_title(r['title']), 'authors': names,
+                'surnames': {surname(x) for x in names}, 'lists': list(r.get('lists') or []), 'wishlisted': r.get('wishlisted'), 'gr_id': r.get('gr_id')}
+        self.books.append(book)
+        return book
 
     def load(self):
         for a in self.n.query_all(cfg('NOTION_AUTHORS_DS')):
             self.authors[a['id']] = prop_text(a['properties'].get('Name'))
         rows = []
         for b in self.n.query_all(cfg('NOTION_BOOKS_DS')):
-            rows.append({'id': b['id'], 'title': prop_text(b['properties'].get('Title')),
-                         'authors': [self.authors.get(i, '') for i in prop_rel(b['properties'].get('Author'))]})
+            p = b['properties']
+            m = GR_IN_NOTES.search(prop_text(p.get('Notes')))
+            rows.append({'id': b['id'], 'title': prop_text(p.get('Title')), 'authors': [self.authors.get(i, '') for i in prop_rel(p.get('Author'))],
+                         'lists': [o['name'] for o in (p.get('Lists') or {}).get('multi_select', [])], 'wishlisted': prop_date(p.get('Wishlisted')),
+                         'gr_id': m.group(1) if m else None})
         self.load_rows(rows)
         log(f'library: {len(self.books)} books, {len(self.authors)} authors')
 
@@ -469,7 +502,8 @@ class Library:
             self.authors[pid(a['url'])] = a.get('Name') or ''
         rows = []
         for b in json.loads(rd.joinpath('books.json').read_text(encoding='utf-8')):
-            rows.append({'id': pid(b['url']), 'title': b.get('Title') or '', 'authors': [self.authors.get(pid(u), '') for u in json.loads(b.get('Author') or '[]')]})
+            rows.append({'id': pid(b['url']), 'title': b.get('Title') or '', 'authors': [self.authors.get(pid(u), '') for u in json.loads(b.get('Author') or '[]')],
+                         'lists': json.loads(b.get('Lists') or '[]'), 'wishlisted': b.get('date:Wishlisted:start') or None})
         self.load_rows(rows)
         self.raw_editions = []
         for e in json.loads(rd.joinpath('editions.json').read_text(encoding='utf-8')):
@@ -609,6 +643,30 @@ class Store:
                 'notes': prop_text(props.get('Notes'))}
         self.reads[read['id']] = read
         return read
+
+    # ---- books and authors (wishlist only)
+    def update_book(self, book_id, props):
+        return self._update(book_id, props)
+
+    def create_book(self, props):
+        res = self._create(cfg('NOTION_BOOKS_DS'), props)
+        return res.get('id') or 'planned'
+
+    def find_author(self, name):
+        """An Author by Name or Sort name (the runbook: check both before creating one)."""
+        if not self.notion:
+            return next((i for i, n in self.lib.authors.items() if n.lower() == name.lower()), None)
+        rows = self.notion.query_all(cfg('NOTION_AUTHORS_DS'), {'or': [
+            {'property': 'Name', 'title': {'equals': name}}, {'property': 'Sort name', 'rich_text': {'equals': sort_name(name)}},
+            {'property': 'Name', 'title': {'equals': sort_name(name)}}]})
+        return rows[0]['id'] if rows else None
+
+    def create_author(self, name):
+        res = self._create(cfg('NOTION_AUTHORS_DS'), {'Name': {'title': [{'text': {'content': name[:200]}}]}, 'Sort name': rt(sort_name(name)),
+                                                      'Roles': {'multi_select': [{'name': 'Author'}]}})
+        aid = res.get('id') or 'planned'
+        self.lib.authors[aid] = name
+        return aid
 
     # ---- editions
     def editions_for_book(self, book_id):
@@ -859,6 +917,7 @@ class Run:
         self.books_by_id = {b['id']: b for b in lib.books}
         self.written = self.already = self.strays = 0
         self.unmatched = []
+        self.to_read_by_id = {}
 
     # ---- lookups
     def find_book(self, ev):
@@ -1000,9 +1059,83 @@ class Run:
         log('reopened', read['title'], '-', line)
         return read
 
+    # ---- the wishlist
+    def wishlist(self, ev):
+        """'Wants to read': tag the Book (Goodreads WTR + Wishlisted), creating Author and Book per the runbook when missing."""
+        book, why = self.find_book(ev)
+        day = local_date(ev['at']) or self.store.today
+        if not book and why.startswith('several'):
+            log('UNMATCHED', 'wishlisted', ev['title'], '-', why)
+            return {'status': 'unmatched', 'why': why}
+        if book:
+            if ev['gr_book_id']:
+                self.state['book_cache'][ev['gr_book_id']] = book['id']
+            props = {}
+            if WTR not in book['lists']:
+                props['Lists'] = {'multi_select': [{'name': x} for x in book['lists'] + [WTR]]}
+            if not book.get('wishlisted'):
+                props['Wishlisted'] = {'date': {'start': day}}
+            if not props:
+                return {'status': 'already', 'book': book}
+            self.store.update_book(book['id'], props)
+            book['lists'] = book['lists'] + ([WTR] if WTR not in book['lists'] else [])
+            book['wishlisted'] = book.get('wishlisted') or day
+            log('wishlisted', book['title'], '-', ', '.join(props))
+            return {'status': 'tagged', 'book': book}
+        # no Book: create the Author(s) and the Book (Source Goodreads, no Edition, genres left for chat)
+        extra = self.to_read_by_id.get(ev['gr_book_id'] or '', {})
+        author = ev.get('author') or extra.get('author_name') or ''
+        created = []
+        aid = self.store.find_author(author) if author else None
+        if author and not aid:
+            aid = self.store.create_author(author)
+            created.append(f'Author created: \u201c{author}\u201d')
+        notes = [f'GR {ev["gr_book_id"]}' if ev.get('gr_book_id') else None, f'ISBN {ev.get("isbn") or extra.get("isbn")}' if (ev.get('isbn') or extra.get('isbn')) else None,
+                 f'created from Goodreads {self.store.today}']
+        props = {'Title': {'title': [{'text': {'content': ev['title'][:200]}}]}, 'Author': {'relation': [{'id': aid}] if aid else []},
+                 'Source': {'select': {'name': 'Goodreads'}}, 'Lists': {'multi_select': [{'name': WTR}]}, 'Wishlisted': {'date': {'start': day}},
+                 'Notes': rt('; '.join(n for n in notes if n))}
+        year = ev.get('published') or extra.get('book_published')
+        pages = ev.get('pages') or extra.get('num_pages')
+        if str(year or '').lstrip('-').isdigit():
+            props['Original year'] = {'number': int(year)}
+        if str(pages or '').isdigit() and int(pages) > 0:
+            props['Pages'] = {'number': int(pages)}
+        bid = self.store.create_book(props)
+        book = self.lib.add_book({'id': bid, 'title': ev['title'], 'authors': [author] if author else [], 'lists': [WTR], 'wishlisted': day, 'gr_id': ev.get('gr_book_id')})
+        self.books_by_id[bid] = book
+        if ev['gr_book_id']:
+            self.state['book_cache'][ev['gr_book_id']] = bid
+        created.append(f'Book created: \u201c{ev["title"]}\u201d')
+        log('created', ', '.join(created))
+        self.queue.ask('Book created', f'Wants to read \u201c{ev["title"]}\u201d{(" by " + author) if author else ""}: created in Notion from Goodreads ({day})',
+                       f'book:{bid}', book=bid, default_applied=True,
+                       proposed=', '.join(created) + f'; Source Goodreads, Lists {WTR}' + (f', {year} · {pages} pp' if year or pages else '') + '; Genre, Form and Fiction blank',
+                       options='Confirm, or fill the genres by chat; answer a Notion title if it duplicates an existing Book')
+        return {'status': 'created', 'book': book}
+
+    def wishlist_removed(self, items):
+        """Books tagged Goodreads WTR that are not on the to-read shelf any more: reported, never untagged."""
+        if not items:
+            return []
+        on_shelf, gr_ids = set(), {it['book_id'] for it in items if it.get('book_id')}
+        for it in items:
+            book, _ = self.lib.match(it['title'], it['author_name'])
+            if book:
+                on_shelf.add(book['id'])
+        out = []
+        for b in self.lib.books:
+            if WTR in b['lists'] and b['id'] not in on_shelf and not (b.get('gr_id') and b['gr_id'] in gr_ids):
+                out.append({'title': b['title'], 'authors': b['authors'], 'wishlisted': b.get('wishlisted'), 'book_id': b['id']})
+        for r in out:
+            log('WISHLIST REMOVED?', r['title'], '- tagged Goodreads WTR but not on the to-read shelf (tag kept)')
+        return out
+
     # ---- one event
     def handle(self, ev, book=None, read=None, force_new=False, force_reopen=False, stray=False):
         """Write one event. Returns {'status': logged | already | stray | unmatched | no_read | finish_mismatch | reread_or_reopen | skipped, ...}."""
+        if ev['kind'] == 'wishlisted':
+            return self.wishlist(ev)
         if ev['kind'] not in KIND_NAME:
             log('skipped', ev['kind'], ev['title'], '(not handled yet)')
             return {'status': 'skipped'}
@@ -1107,7 +1240,7 @@ class Run:
         return {'status': status, 'book': book, 'read': read}
 
     def count(self, res):
-        if res['status'] == 'logged':
+        if res['status'] in ('logged', 'tagged', 'created'):
             self.written += 1
         elif res['status'] == 'already':
             self.already += 1
@@ -1316,7 +1449,7 @@ class Run:
             book, _ = self.lib.match(it['title'], it['author_name'])
             times = [to_dt(added)] + ([to_dt(read_at, end_of_day=True)] if read_at else [])
             latest = max(x for x in times if x) if any(times) else None
-            inside = shelf == 'currently-reading' or (latest is not None and latest > fence) or (book is not None and book['id'] in open_books)
+            inside = shelf == 'currently-reading' or (latest is not None and latest > fence) or (shelf != 'to-read' and book is not None and book['id'] in open_books)
             if not inside:
                 fenced_out += 1
                 continue
@@ -1326,6 +1459,8 @@ class Run:
                 kind, day = 'started', local_date(added)
             elif shelf == 'read':
                 kind, day = 'finished', read_at or local_date(added)
+            elif shelf == 'to-read':
+                kind, day = 'wishlisted', local_date(added)
             else:
                 kind, day = 'dnf', read_at or local_date(added)
             if not day:
@@ -1337,6 +1472,8 @@ class Run:
                 ev['estimated'] = True
             if it.get('num_pages', '').isdigit():
                 ev['total'] = int(it['num_pages'])
+            if kind == 'wishlisted':
+                ev.update({'pages': it.get('num_pages'), 'published': it.get('book_published'), 'isbn': it.get('isbn')})
             out.append(ev)
         return out, fenced_out
 
@@ -1374,6 +1511,7 @@ def run_sync(notion, items, shelves, state, *, dry_run=False, offline_lib=None, 
     store.now = now
     queue = SyncQueue(store)
     run = Run(store, lib, queue, state)
+    run.to_read_by_id = {it['book_id']: it for it in shelves.get('to-read', []) if it.get('book_id')}
     # the fence: only what happened after the last successful run (less a margin) is an event
     last = queue.last_run()
     if since:
@@ -1409,12 +1547,13 @@ def run_sync(notion, items, shelves, state, *, dry_run=False, offline_lib=None, 
         run.feed(shelf_evs)
     if 'currently-reading' in shelves:
         run.still_reading(shelves['currently-reading'])
+    removed = run.wishlist_removed(shelves['to-read']) if 'to-read' in shelves else []
     summary = {'at': now, 'items': len(items), 'new': len(events), 'fenced_out': fenced_out, 'written': run.written, 'already': run.already, 'strays': run.strays,
                'unmatched': len(run.unmatched), 'asked': len(queue.asked), 'window': window, 'watermark': watermark,
                'shelves': {k: len(v) for k, v in shelves.items()}}
     queue.record_run(summary)
     open_questions = [q for q in queue.open_rows(refresh=True) if q['status'] == 'Open'] if (queue.enabled and not dry_run) else list(queue.open_rows())
-    return {**summary, 'unmatched': run.unmatched, 'questions': queue.asked, 'open_questions': open_questions, 'plan': store.plan}
+    return {**summary, 'unmatched': run.unmatched, 'questions': queue.asked, 'open_questions': open_questions, 'wishlist_removed': removed, 'plan': store.plan}
 
 
 def run(args):
@@ -1427,7 +1566,7 @@ def run(args):
         print('Add that line to sync/.env and to the workflow env (and as the default in goodreads_sync.py).')
         return 0
     state = load_state()
-    fixtures = {'currently-reading': args.shelf_fixture, 'read': args.read_fixture, 'did-not-finish': args.dnf_fixture}
+    fixtures = {'currently-reading': args.shelf_fixture, 'read': args.read_fixture, 'did-not-finish': args.dnf_fixture, 'to-read': args.to_read_fixture}
     urls = feed_urls() if not (args.fixture and all(fixtures.values())) else {}
     shelves = {}
     try:
@@ -1437,7 +1576,7 @@ def run(args):
                 if fixtures[shelf]:
                     shelves[shelf] = rss_items(Path(fixtures[shelf]).read_bytes())
                 elif not args.fixture or args.fetch_shelves:
-                    shelves[shelf] = rss_items(fetch(urls[shelf]))
+                    shelves[shelf] = fetch_shelf(urls[shelf], max_pages=10 if shelf == 'to-read' else 1)
     except Exception as e:
         sys.exit(f'could not fetch Goodreads: {e}')
     if not args.fixture and not args.no_archive:
@@ -1462,8 +1601,8 @@ def run(args):
         log(f"{len(report['plan'])} planned write(s) saved to {args.plan}")
     view = {'at': report['at'], 'open_questions': [{k: v for k, v in q.items() if k != 'event'} for q in report['open_questions']],
             'asked_this_run': [{k: v for k, v in q.items() if k != 'event'} for q in report['questions']],
-            'unmatched_events': report['unmatched']}
-    if view['open_questions'] or view['asked_this_run'] or report['unmatched']:
+            'unmatched_events': report['unmatched'], 'wishlist_removed': report['wishlist_removed']}
+    if view['open_questions'] or view['asked_this_run'] or report['unmatched'] or report['wishlist_removed']:
         UNMATCHED_FILE.write_text(json.dumps(view, indent=1, ensure_ascii=False), encoding='utf-8')
         log(f"{len(view['open_questions'])} open question(s), {len(report['unmatched'])} unmatched event(s) written to {UNMATCHED_FILE.name}")
     elif UNMATCHED_FILE.exists():
@@ -1484,6 +1623,7 @@ def parse_args(argv=None):
     ap.add_argument('--shelf-fixture', help='parse this saved currently-reading shelf RSS instead of fetching')
     ap.add_argument('--read-fixture', help='parse this saved read shelf RSS instead of fetching')
     ap.add_argument('--dnf-fixture', help='parse this saved did-not-finish shelf RSS instead of fetching')
+    ap.add_argument('--to-read-fixture', help='parse this saved to-read shelf RSS instead of fetching')
     ap.add_argument('--fetch-shelves', action='store_true', help='with --fixture: still fetch the shelves that have no fixture')
     ap.add_argument('--since', metavar='ISO', help='override the watermark: take events and shelf items after this date/time')
     ap.add_argument('--no-archive', action='store_true', help='do not append the fetched feed to sync/feed_archive/')

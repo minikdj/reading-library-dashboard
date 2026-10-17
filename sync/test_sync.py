@@ -184,12 +184,13 @@ class Workspace:
         self.n = FakeNotion()
         self.books = {}
 
-    def author(self, name):
-        return self.n.seed(AUTHORS_DS, {'Name': title(name)})
+    def author(self, name, sort_name=None):
+        return self.n.seed(AUTHORS_DS, {'Name': title(name), 'Sort name': text(sort_name or ''), 'Roles': {'multi_select': [{'name': 'Author'}]}})
 
-    def book(self, t, author=None):
-        aid = self.author(author) if author else None
-        pid = self.n.seed(BOOKS_DS, {'Title': title(t), 'Author': rel(aid)})
+    def book(self, t, author=None, lists=(), wishlisted=None, notes='', author_id=None):
+        aid = author_id or (self.author(author) if author else None)
+        pid = self.n.seed(BOOKS_DS, {'Title': title(t), 'Author': rel(aid), 'Lists': {'multi_select': [{'name': x} for x in lists]},
+                                     'Wishlisted': date(wishlisted), 'Notes': text(notes)})
         self.books[t] = pid
         return pid
 
@@ -220,9 +221,9 @@ class Workspace:
         out = [gs.queue_norm(r) for r in rows]
         return [r for r in out if all(r.get(k) == v for k, v in flt.items())]
 
-    def sync(self, items, shelf=None, state=None, now='2026-10-17T09:00:00-04:00', read_shelf=None, dnf_shelf=None, **kw):
+    def sync(self, items, shelf=None, state=None, now='2026-10-17T09:00:00-04:00', read_shelf=None, dnf_shelf=None, to_read=None, **kw):
         state = state if state is not None else {'book_cache': {}, 'runs': []}
-        shelves = {k: list(v) for k, v in (('currently-reading', shelf), ('read', read_shelf), ('did-not-finish', dnf_shelf)) if v is not None}
+        shelves = {k: list(v) for k, v in (('currently-reading', shelf), ('read', read_shelf), ('did-not-finish', dnf_shelf), ('to-read', to_read)) if v is not None}
         return gs.run_sync(self.n, list(items), shelves, state, now=now, **kw), state
 
 
@@ -1237,6 +1238,141 @@ class AnswerTests(unittest.TestCase):
         self.ws.sync([])
         p = self.ws.n.pages[r]['properties']
         self.assertEqual((p['Ended']['date']['start'], p['Outcome']['select']['name'], p['Pages read']['number']), ('2026-10-15', 'Finished', 400))
+
+
+# ---------------------------------------------------------------- step 5: the wishlist
+def wtr_item(guid, pub, gr_id, title_text, author):
+    return rss_item(guid, pub, f"Dan wants to read '{title_text}'",
+                    f'Dan wants to read <a class="bookTitle" href="/book/show/{gr_id}.x">{title_text}</a> <span class="by">by</span> '
+                    f'<a class="authorName" href="/author/show/2.x">{author}</a>', link='https://www.goodreads.com/review/show/9028451238')
+
+
+def to_read_item(t, author, added, book_id, review='9028451238', pages='624', published='2007', isbn='0375726136'):
+    it = shelf_item(t, author, added=added, book_id=book_id, review=review, pages=pages)
+    it.update({'book_published': published, 'isbn': isbn, 'user_shelves': 'to-read'})
+    return it
+
+
+ROME = 'Rome and Jerusalem: The Clash of Ancient Civilizations'
+
+
+class WishlistTests(unittest.TestCase):
+    def setUp(self):
+        self.ws = Workspace()
+        self.item = wtr_item('ReadStatus400', 'Thu, 15 Oct 2026 12:31:13 -0700', '358646', ROME, 'Martin Goodman')
+
+    def lists(self, book):
+        return [o['name'] for o in self.ws.n.prop(book, 'Lists')['multi_select']]
+
+    def test_existing_book_is_tagged_and_dated(self):
+        b = self.ws.book(ROME, 'Martin Goodman', lists=['Steve 100'])
+        report, _ = self.ws.sync([self.item])
+        self.assertEqual(self.lists(b), ['Steve 100', 'Goodreads WTR'])
+        self.assertEqual(self.ws.n.prop(b, 'Wishlisted')['date']['start'], '2026-10-15')
+        self.assertEqual(report['questions'], [])
+        self.assertEqual(self.ws.n.creates(BOOKS_DS), [])
+        n = len(self.ws.n.writes)
+        self.ws.sync([self.item])
+        self.assertEqual(len(self.ws.n.writes), n + 1)  # only the Sync run row
+
+    def test_tagged_book_is_left_alone(self):
+        b = self.ws.book(ROME, 'Martin Goodman', lists=['Goodreads WTR'], wishlisted='2026-10-15')
+        self.ws.sync([self.item])
+        self.assertEqual(self.ws.n.updates(b), [])
+
+    def test_tagged_but_undated_book_gets_the_date(self):
+        b = self.ws.book(ROME, 'Martin Goodman', lists=['Goodreads WTR'])
+        self.ws.sync([self.item])
+        up = self.ws.n.updates(b)
+        self.assertEqual(len(up), 1)
+        self.assertEqual(up[0]['Wishlisted']['date']['start'], '2026-10-15')
+        self.assertNotIn('Lists', up[0])
+
+    def test_missing_book_is_created_with_the_known_author(self):
+        a = self.ws.author('Martin Goodman', 'Goodman, Martin')
+        shelf = [to_read_item(ROME, 'Martin Goodman', 'Thu, 15 Oct 2026 12:31:13 -0700', '358646')]
+        report, _ = self.ws.sync([self.item], to_read=shelf)
+        self.assertEqual(self.ws.n.creates(AUTHORS_DS), [])
+        new = self.ws.n.creates(BOOKS_DS)
+        self.assertEqual(len(new), 1)
+        p = new[0]
+        self.assertEqual(_plain(p['Title']['title']), ROME)
+        self.assertEqual(p['Author']['relation'][0]['id'], a)
+        self.assertEqual(p['Source']['select']['name'], 'Goodreads')
+        self.assertEqual([o['name'] for o in p['Lists']['multi_select']], ['Goodreads WTR'])
+        self.assertEqual(p['Wishlisted']['date']['start'], '2026-10-15')
+        self.assertEqual((p['Original year']['number'], p['Pages']['number']), (2007, 624))
+        self.assertIn('GR 358646', _plain(p['Notes']['rich_text']))
+        self.assertIn('ISBN 0375726136', _plain(p['Notes']['rich_text']))
+        q = report['questions'][0]
+        self.assertEqual((q['kind'], q['default_applied']), ('Book created', True))
+        self.assertIn(ROME, q['question'])
+        self.assertNotIn('Author created', q['proposed'])
+
+    def test_missing_author_is_created_too(self):
+        report, _ = self.ws.sync([self.item])
+        a = self.ws.n.creates(AUTHORS_DS)
+        self.assertEqual(len(a), 1)
+        self.assertEqual((_plain(a[0]['Name']['title']), _plain(a[0]['Sort name']['rich_text'])), ('Martin Goodman', 'Goodman, Martin'))
+        self.assertEqual([o['name'] for o in a[0]['Roles']['multi_select']], ['Author'])
+        b = self.ws.n.creates(BOOKS_DS)[0]
+        self.assertEqual(len(b['Author']['relation']), 1)
+        self.assertNotIn('Original year', b)  # the feed item carries no year or pages
+        self.assertIn('Author created', report['questions'][0]['proposed'])
+
+    def test_author_is_found_by_sort_name(self):
+        a = self.ws.author('M. Goodman', 'Goodman, Martin')
+        self.ws.sync([self.item])
+        self.assertEqual(self.ws.n.creates(AUTHORS_DS), [])
+        self.assertEqual(self.ws.n.creates(BOOKS_DS)[0]['Author']['relation'][0]['id'], a)
+
+    def test_second_event_for_the_new_book_in_the_same_run_matches_it(self):
+        shelf = [to_read_item(ROME, 'Martin Goodman', 'Thu, 15 Oct 2026 12:31:13 -0700', '358646')]
+        self.ws.sync([self.item], to_read=shelf)
+        self.assertEqual(len(self.ws.n.creates(BOOKS_DS)), 1)
+
+    def test_ambiguous_title_is_a_question_not_a_book(self):
+        self.ws.book('Stalin: Waiting for Hitler', 'Stephen Kotkin')
+        self.ws.book('Stalin: Paradoxes of Power', 'Stephen Kotkin')
+        report, _ = self.ws.sync([wtr_item('ReadStatus401', 'Thu, 15 Oct 2026 12:31:13 -0700', '1', 'Stalin', 'Stephen Kotkin')])
+        self.assertEqual(self.ws.n.creates(BOOKS_DS), [])
+        self.assertEqual(report['questions'][0]['kind'], 'Unmatched book')
+
+    def test_to_read_shelf_items_inside_the_fence_are_tagged(self):
+        b1 = self.ws.book(ROME, 'Martin Goodman')
+        b2 = self.ws.book('Oroonoko', 'Aphra Behn')
+        sync_run_row(self.ws, '2026-10-14T23:45:00-04:00')
+        shelf = [to_read_item(ROME, 'Martin Goodman', 'Thu, 15 Oct 2026 12:31:13 -0700', '358646'),
+                 to_read_item('Oroonoko', 'Aphra Behn', 'Sat, 10 Jan 2026 12:00:00 -0500', '77', review='5')]
+        self.ws.sync([], to_read=shelf, now='2026-10-16T23:45:00-04:00')
+        self.assertEqual(self.lists(b1), ['Goodreads WTR'])
+        self.assertEqual(self.ws.n.updates(b2), [])
+
+    def test_removals_are_reported_only(self):
+        gone = self.ws.book('A Book Dan Unshelved', 'Someone', lists=['Goodreads WTR'], wishlisted='2025-01-01', notes='GR 999')
+        kept = self.ws.book(ROME, 'Martin Goodman', lists=['Goodreads WTR'], wishlisted='2026-10-15')
+        by_id = self.ws.book('Renamed on Goodreads', 'Nobody', lists=['Goodreads WTR'], notes='GR 555')
+        shelf = [to_read_item(ROME, 'Martin Goodman', 'Thu, 15 Oct 2026 12:31:13 -0700', '358646'),
+                 to_read_item('Some Other Title', 'Nobody', 'Thu, 01 Oct 2026 12:31:13 -0700', '555', review='6')]  # outside the fence: only the removal check sees it
+        report, _ = self.ws.sync([], to_read=shelf)
+        self.assertEqual([r['title'] for r in report['wishlist_removed']], ['A Book Dan Unshelved'])
+        self.assertEqual(self.ws.n.updates(gone), [])
+        self.assertEqual(self.ws.n.updates(kept), [])
+        self.assertEqual(self.ws.n.updates(by_id), [])
+        self.assertEqual([q['kind'] for q in report['questions']], [])
+
+    def test_no_removal_report_without_the_shelf(self):
+        self.ws.book('A Book Dan Unshelved', 'Someone', lists=['Goodreads WTR'])
+        report, _ = self.ws.sync([])
+        self.assertEqual(report['wishlist_removed'], [])
+
+    def test_offline_plan_holds_the_tag(self):
+        lib = gs.Library(None)
+        lib.load_rows([{'id': 'b1', 'title': ROME, 'authors': ['Martin Goodman'], 'lists': [], 'wishlisted': None}])
+        report = gs.run_sync(None, [self.item], {}, {'book_cache': {}, 'runs': []}, offline_lib=lib, now='2026-10-17T09:00:00-04:00')
+        self.assertEqual(report['plan'][0]['op'], 'update')
+        self.assertEqual(report['plan'][0]['page'], 'b1')
+        self.assertEqual([o['name'] for o in report['plan'][0]['props']['Lists']['multi_select']], ['Goodreads WTR'])
 
 
 if __name__ == '__main__':
