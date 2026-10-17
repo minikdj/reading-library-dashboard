@@ -4,21 +4,22 @@ Goodreads is where Dan marks a book started and updates his page each day; Notio
 
 ## What it does
 
-`goodreads_sync.py` runs at 23:45 under launchd (plist in this folder):
+`goodreads_sync.py` runs nightly, as a Claude Code cloud routine (see Setup) or, as a fallback, under launchd on the Mac (plist in this folder):
 
 1. Fetches Dan's Goodreads **updates RSS** (the activity stream, where "started reading", "is on page N of M", "is N% done" and "finished reading" items appear). The official Goodreads API was retired in 2020; the per-user RSS feeds are what remains, and their wording is not documented, so the parser keeps each item's raw sentence on the event.
 2. Skips items it has seen (ids in `state.json`), then matches each new event to a Notion **Book** by title, tie-breaking on author surname, and to that Book's **open Read** (no Outcome yet). It never creates Books or Reads.
 3. Appends one row per event to the **Reading log** database (append-only: this is the event stream the Reads rows summarise) and, for a Started event on a Read whose Started is blank, sets Started and clears Dates estimated.
-4. Writes anything it couldn't match to `unmatched.json` and the log, for Dan to resolve by chat (usually "Goodreads says you started X; log it in Notion").
+4. Compares the Goodreads **currently-reading shelf** with Notion's open Reads, both ways, and reports every difference (for example "Goodreads: currently reading Lonesome Dove since Oct 9, but Notion's last Read of it is Finished, ended 2026-06-30").
+5. Writes anything it couldn't match, and the shelf differences, to `unmatched.json` and the log, for Dan to resolve by chat (usually "Goodreads says you started X; log it in Notion").
 
 Only the public feed URL goes to Goodreads, with a generic User-Agent. Nothing personal leaves the machine.
 
-## A better source: the review page timeline
+## What the feeds do and don't carry (checked 2026-10-16 against Dan's account)
 
-Each Goodreads review page (`goodreads.com/review/show/<id>`) shows a **Reading progress** timeline: Started Reading date, every "page N" update with its date and note, Finished Reading, and shelvings such as did-not-finish. That is the complete per-read history, whereas the updates RSS only keeps recent items. Once Dan's profile URL is known and a review page has been fetched to see its markup, the plan is:
-
-- nightly: take the currently-reading shelf RSS (review links), fetch those few review pages, parse the timeline, and log any event not yet in the Reading log; keep the updates feed as a cross-check;
-- once, on Dan's say-so: walk the read shelf (RSS, paged), fetch each review page politely (one request every few seconds), and backfill Started dates and progress history for past reads. The Goodreads CSV export never carried Started dates, which is why Notion has none.
+- **Updates feed** (`/user/updates_rss/<id>`): "started reading", "is on page N of M" (with the note Dan typed), "finished reading", "did not finish", "wants to read", plus likes of other people's updates (ignored). Only the most recent items; polled nightly.
+- **Shelf feeds** (`/review/list_rss/<id>?shelf=…&per_page=200&page=n`): every book on a shelf with `user_read_at` (finished date), `user_date_added`, `user_date_created` (when the review row was made), author, ISBN. No Started date. The read shelf had 221 items on 2026-10-16.
+- **Review pages** (`/review/show/<id>`), which show the full Reading progress timeline with the Started date and every page update, redirect anonymous requests to sign-in, so a script can't read them. Backfilling the full history would need Dan signed in to Goodreads in the Claude browser pane, with Claude reading each review page there (one-time, 221 pages).
+- A cheaper partial backfill: for reads where Dan shelved the book as currently-reading when he started it, `user_date_created` on the read shelf is the day he started. Where it falls within a plausible window before `user_read_at` it can fill a blank or estimated Started; bulk-imported rows (created long before or on the same day as the finish) are skipped.
 
 ## Reading log schema (Notion, under Media › Library)
 
@@ -40,17 +41,15 @@ Reads.Pages read stays Dan's own figure (pages actually read, indexes skipped); 
 
 ## Setup (once)
 
-1. **Integration.** Use the existing Notion integration from the CLI project (its token is in `~/claude/.env`) or create one at notion.so/my-integrations. In Notion, open each of Books, Reads, Authors and Reading log › `···` › Connections › add the integration.
-2. **Reading log database.** Create it under the Library page with the schema above (Claude can do this through the Notion connector on Dan's OK). Put its data source id in `.env` as `NOTION_LOG_DS`.
-3. **Config.** `cp sync/.env.example sync/.env` and fill in `NOTION_TOKEN`, `NOTION_LOG_DS`, `GOODREADS_USER_ID` (and `GOODREADS_RSS_KEY` if the profile is private).
-4. **Verify the feed.** `python3 sync/goodreads_sync.py --parse-only` prints the events parsed from the live feed. If a sentence isn't recognised, add its pattern to `PATTERNS`.
-5. **Dry run.** `python3 sync/goodreads_sync.py --dry-run` matches against Notion and prints the writes without saving.
-6. **Install the job.**
+1. **Notion token.** Dan already has an internal integration (made for the old reading-list CLI; its token is `NOTION_API_KEY` in `~/claude/.env`). Reuse it: in Notion open each of **Books, Reads, Authors, Reading log** › `···` (top right) › **Connections** › add that integration. Or make a new one at notion.so/my-integrations (Internal, read + insert + update content) and connect it the same way. The token is the value starting `ntn_` or `secret_`.
+2. **Reading log database.** Exists since 2026-10-16 under Media › Library (data source `ced88101-f6c5-4e4e-9c1f-8305afeb2e7e`, the script's default).
+3. **Cloud routine (preferred).** In claude.ai/code create an environment for `minikdj/reading-library-dashboard` with environment variables `NOTION_TOKEN` and `GOODREADS_USER_ID=151183858`; the routine runs `python3 sync/goodreads_sync.py` nightly and commits nothing. `unmatched.json` is printed in the run log, since the cloud checkout is thrown away.
+4. **Local fallback (launchd).** `cp sync/.env.example sync/.env`, fill in `NOTION_TOKEN`, then:
    ```bash
    cp sync/com.dan.reading-library.goodreads-sync.plist ~/Library/LaunchAgents/
    launchctl load ~/Library/LaunchAgents/com.dan.reading-library.goodreads-sync.plist
    ```
-   Run it once by hand: `launchctl start com.dan.reading-library.goodreads-sync`.
+5. **Checks before trusting it.** `--parse-only` prints the parsed events; `--fixture … --shelf-fixture … --offline-library data/raw` matches against the repo's raw pull with no token; `--dry-run` matches against Notion and prints the writes without saving.
 
 ## Day to day
 

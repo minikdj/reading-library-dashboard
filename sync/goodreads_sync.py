@@ -20,6 +20,8 @@ Usage:
   goodreads_sync.py --dry-run       fetch and match, print the writes, write nothing
   goodreads_sync.py --fixture f.xml parse a saved feed file instead of fetching
   goodreads_sync.py --parse-only    parse the feed(s) and print events; no Notion at all
+  goodreads_sync.py --fixture f.xml --shelf-fixture s.xml --offline-library data/raw
+                                    match against the repo's raw pull; prints what it would write
 """
 import argparse
 import html
@@ -51,6 +53,7 @@ DEFAULTS = {
     'NOTION_BOOKS_DS': '21e3da73-9608-41f8-a857-bd226043a391',
     'NOTION_READS_DS': '05439130-377c-4e0b-948e-7c1d7ffb065e',
     'NOTION_AUTHORS_DS': 'f96682e9-8772-4493-abff-ec079148f1b2',
+    'NOTION_LOG_DS': 'ced88101-f6c5-4e4e-9c1f-8305afeb2e7e',  # Reading log, created 2026-10-16 under Media › Library
 }
 
 
@@ -133,11 +136,19 @@ def squeeze(s):
 # The sentences Goodreads writes into the updates feed. The feed's wording is not documented, so
 # every pattern is anchored loosely and the raw title is kept on the event for checking.
 PATTERNS = [
-    ('progress', re.compile(r'^(?P<who>.+?) is on page (?P<page>\d+) of (?P<total>\d+) of (?P<title>.+?)\s*$', re.I)),
-    ('progress', re.compile(r'^(?P<who>.+?) is (?P<pct>\d+)% done with (?P<title>.+?)\s*$', re.I)),
+    ('progress', re.compile(r'^(?P<who>.+?) is on page (?P<page>\d+) of (?P<total>\d+) of (?P<title>.+?)\s*\.?\s*$', re.I)),
+    ('progress', re.compile(r'^(?P<who>.+?) is (?P<pct>\d+)% done with (?P<title>.+?)\s*\.?\s*$', re.I)),
     ('started', re.compile(r'^(?P<who>.+?) (?:started reading|is currently reading) (?P<title>.+?)\s*$', re.I)),
     ('finished', re.compile(r'^(?P<who>.+?) finished reading (?P<title>.+?)\s*$', re.I)),
+    ('dnf', re.compile(r'^(?P<who>.+?) did not finish (?P<title>.+?)\s*$', re.I)),
 ]
+BOOK_ANCHOR = re.compile(r'<a[^>]*/book/show/(?P<id>\d+)[^>]*>(?P<title>[^<]+)</a>', re.I)
+NOTE_IN_DESC = re.compile(r'</a>\.?\s*(?:<br\s*/?>|\s)*["\u201c](?P<note>[^"\u201d]{1,500})["\u201d]', re.I)
+
+
+def unquote(t):
+    t = squeeze(t)
+    return t[1:-1].strip() if len(t) > 2 and t[0] in "'\u2018\u201c\"" and t[-1] in "'\u2019\u201d\"" else t
 AUTHOR_IN_DESC = re.compile(r'\bby\s+<a[^>]*author/show[^>]*>(?P<author>[^<]+)</a>', re.I)
 AUTHOR_PLAIN = re.compile(r'\bby\s+(?P<author>[A-Z][^<,;\n]{1,60}?)\s*(?:$|[\n<(])')
 BOOK_LINK = re.compile(r'/book/show/(?P<id>\d+)')
@@ -145,22 +156,31 @@ BOOK_LINK = re.compile(r'/book/show/(?P<id>\d+)')
 
 def parse_update(item):
     """Turn one updates-feed item into an event dict, or None for items we don't track."""
-    text = squeeze(item['title']) or squeeze(strip_tags(item['description']))
+    desc_html = html.unescape(item['description'] or '')
+    desc_text = squeeze(strip_tags(desc_html))
+    # the <title> element wraps and truncates long sentences; the description carries the whole one
+    text = desc_text or squeeze(item['title'])
+    if re.search(r'\bliked\b', text) or str(item['guid']).startswith(('Rating', 'Comment', 'Friend')):
+        return None  # likes, comments and friendings mention other people's reading
     for kind, pat in PATTERNS:
-        m = pat.match(text)
-        if not m:
+        m = pat.match(text) or pat.match(squeeze(item['title']))
+        if not m or len(m.group('who').split()) > 3:
             continue
-        title = squeeze(m.group('title'))
+        title = unquote(m.group('title'))
+        anchor = BOOK_ANCHOR.search(desc_html)
+        if anchor:
+            title = squeeze(anchor.group('title'))
         # the feed sometimes appends " by Author" to the title sentence
         author = None
         mb = re.match(r'^(?P<t>.+?)\s+by\s+(?P<a>[^()]+?)$', title)
         if mb and len(mb.group('a')) < 60:
             title, author = squeeze(mb.group('t')), squeeze(mb.group('a'))
         if not author:
-            ma = AUTHOR_IN_DESC.search(item['description'] or '') or AUTHOR_PLAIN.search(strip_tags(item['description'] or ''))
+            ma = AUTHOR_IN_DESC.search(desc_html) or AUTHOR_PLAIN.search(desc_text)
             if ma:
                 author = squeeze(ma.group('author'))
-        mid = BOOK_LINK.search(item['description'] or '') or BOOK_LINK.search(item['link'] or '')
+        mid = BOOK_LINK.search(desc_html) or BOOK_LINK.search(item['link'] or '')
+        note = NOTE_IN_DESC.search(desc_html)
         at = None
         if item['pubDate']:
             try:
@@ -168,7 +188,8 @@ def parse_update(item):
             except Exception:
                 at = None
         ev = {'kind': kind, 'title': title, 'author': author, 'gr_book_id': mid.group('id') if mid else None,
-              'guid': item['guid'], 'at': at.isoformat() if at else None, 'raw': text}
+              'guid': item['guid'], 'at': at.isoformat() if at else None, 'raw': text, 'note': squeeze(note.group('note')) if note else None,
+              'review_url': item['link'] if '/review/show/' in (item['link'] or '') else None}
         if 'page' in m.groupdict() and m.group('page'):
             ev['page'], ev['total'] = int(m.group('page')), int(m.group('total'))
             ev['percent'] = round(100 * ev['page'] / ev['total']) if ev['total'] else None
@@ -287,6 +308,23 @@ class Library:
                                'authors': names, 'surnames': {surname(x) for x in names if x}})
         log(f'library: {len(self.books)} books, {len(self.authors)} authors')
 
+    def load_raw(self, raw_dir):
+        """Books, Authors and Reads from data/raw/*.json (the dashboard's pull), for offline runs."""
+        rd = Path(raw_dir)
+        pid = lambda u: u[23:]
+        for a in json.loads(rd.joinpath('authors.json').read_text(encoding='utf-8')):
+            self.authors[pid(a['url'])] = a.get('Name') or ''
+        for b in json.loads(rd.joinpath('books.json').read_text(encoding='utf-8')):
+            title = b.get('Title') or ''
+            names = [self.authors.get(pid(u), '') for u in json.loads(b.get('Author') or '[]')]
+            self.books.append({'id': pid(b['url']), 'title': title, 'norm': norm(title), 'main': main_title(title), 'authors': names, 'surnames': {surname(x) for x in names if x}})
+        self.raw_reads = []
+        for r in json.loads(rd.joinpath('reads.json').read_text(encoding='utf-8')):
+            bk = json.loads(r.get('Book') or '[]')
+            self.raw_reads.append({'id': pid(r['url']), 'book': pid(bk[0]) if bk else None, 'title': r.get('Read') or '', 'outcome': r.get('Outcome') or None,
+                                   'started': r.get('date:Started:start') or None, 'ended': r.get('date:Ended:start') or None})
+        log(f'library (offline, {rd}): {len(self.books)} books, {len(self.authors)} authors, {len(self.raw_reads)} reads')
+
     def match(self, title, author):
         nt, mt, sn = norm(title), main_title(title), surname(author) if author else ''
         cands = [b for b in self.books if b['norm'] == nt] or [b for b in self.books if b['main'] == mt and mt] \
@@ -300,6 +338,39 @@ class Library:
         if not cands:
             return None, 'no book with that title'
         return None, 'several books match: ' + '; '.join(f"{b['title']} ({', '.join(b['authors'])})" for b in cands[:4])
+
+
+def read_norm(page):
+    p = page['properties']
+    return {'id': page['id'], 'title': prop_text(p.get('Read')), 'outcome': prop_select(p.get('Outcome')),
+            'started': prop_date(p.get('Started')), 'ended': prop_date(p.get('Ended'))}
+
+
+class Store:
+    """Where Reads are looked up and events written: Notion over the API, or the raw pull (read-only)."""
+
+    def __init__(self, notion=None, lib=None):
+        self.notion, self.lib = notion, lib
+
+    def open_read(self, book_id):
+        if self.notion:
+            r = open_read(self.notion, book_id)
+            return read_norm(r) if r else None
+        rs = [r for r in self.lib.raw_reads if r['book'] == book_id and not r['outcome']]
+        rs.sort(key=lambda r: r['started'] or '', reverse=True)
+        return rs[0] if rs else None
+
+    def recent_read(self, book_id):
+        if self.notion:
+            r = recent_read(self.notion, book_id)
+            return read_norm(r) if r else None
+        rs = sorted([r for r in self.lib.raw_reads if r['book'] == book_id], key=lambda r: r['ended'] or r['started'] or '', reverse=True)
+        return rs[0] if rs else None
+
+    def all_open(self):
+        if self.notion:
+            return [read_norm(r) for r in self.notion.query_all(cfg('NOTION_READS_DS'), {'property': 'Outcome', 'select': {'is_empty': True}})]
+        return [r for r in self.lib.raw_reads if not r['outcome']]
 
 
 def open_read(notion, book_id):
@@ -319,7 +390,7 @@ def recent_read(notion, book_id):
 
 
 # ---------------------------------------------------------------- writes
-KIND_NAME = {'started': 'Started', 'progress': 'Progress', 'finished': 'Finished'}
+KIND_NAME = {'started': 'Started', 'progress': 'Progress', 'finished': 'Finished', 'dnf': 'DNF'}
 
 
 def log_props(ev, book, read):
@@ -342,6 +413,8 @@ def log_props(ev, book, read):
         props['Of pages'] = {'number': ev['total']}
     if ev.get('percent') is not None:
         props['Percent'] = {'number': ev['percent']}
+    if ev.get('note'):
+        props['Note'] = {'rich_text': [{'text': {'content': ev['note'][:2000]}}]}
     return props
 
 
@@ -350,38 +423,60 @@ def already_logged(notion, guid):
     return bool(rows)
 
 
+def check_reading(shelf_items, lib, store):
+    """Goodreads' currently-reading shelf against Notion's open Reads, both ways."""
+    out = []
+    seen_books = set()
+    for it in shelf_items:
+        book, why = lib.match(it['title'], it['author_name'])
+        since = it['user_date_added'][:16] if it['user_date_added'] else None
+        if not book:
+            out.append({'what': 'Goodreads: currently reading, but no matching Book in Notion', 'title': it['title'], 'author': it['author_name'], 'since': since, 'reason': why})
+            continue
+        seen_books.add(book['id'])
+        rd = store.open_read(book['id'])
+        if not rd:
+            last = store.recent_read(book['id'])
+            out.append({'what': 'Goodreads: currently reading, but no open Read in Notion', 'title': book['title'], 'since': since,
+                        'last_read_in_notion': (last['title'] + ' (' + (last['outcome'] or 'open') + (', ended ' + last['ended'] if last['ended'] else '') + ')') if last else None})
+    for rd in store.all_open():
+        bid = rd.get('book')
+        if bid is None and store.notion:
+            continue  # the API shape carries no book id here; the shelf side already covers it
+        if bid not in seen_books:
+            out.append({'what': 'Notion: open Read, but not on the Goodreads currently-reading shelf', 'title': rd['title'], 'started': rd['started']})
+    return out
+
+
 def run(args):
     load_env()
     state = load_state()
-    urls = feed_urls() if not args.fixture else {}
-    items = []
-    if args.fixture:
-        items = rss_items(Path(args.fixture).read_bytes())
-    else:
-        try:
-            items = rss_items(fetch(urls['updates']))
-        except Exception as e:
-            sys.exit(f'could not fetch the updates feed: {e}')
+    urls = feed_urls() if not (args.fixture and args.shelf_fixture) else {}
+    try:
+        items = rss_items(Path(args.fixture).read_bytes() if args.fixture else fetch(urls['updates']))
+        shelf = rss_items(Path(args.shelf_fixture).read_bytes() if args.shelf_fixture else fetch(urls['reading'])) if not args.parse_only else []
+    except Exception as e:
+        sys.exit(f'could not fetch Goodreads: {e}')
     events = [e for e in (parse_update(it) for it in items) if e]
-    log(f'feed: {len(items)} items, {len(events)} tracked events')
+    log(f'feed: {len(items)} items, {len(events)} tracked events; currently-reading shelf: {len(shelf)}')
     if args.parse_only:
         for e in events:
             print(json.dumps(e, ensure_ascii=False))
         return 0
 
     new = [e for e in events if e['guid'] not in state['seen']]
-    if not new:
-        log('nothing new')
-        state['runs'] = (state.get('runs') or [])[-30:] + [{'at': datetime.now().isoformat(timespec='seconds'), 'new': 0}]
-        save_state(state)
-        return 0
-
-    notion = Notion(cfg('NOTION_TOKEN', required=True), dry_run=args.dry_run)
-    cfg('NOTION_LOG_DS', required=True)
+    offline = bool(args.offline_library)
+    notion = None if offline else Notion(cfg('NOTION_TOKEN', required=True), dry_run=args.dry_run)
+    if not offline:
+        cfg('NOTION_LOG_DS', required=True)
     lib = Library(notion)
-    lib.load()
-    unmatched = []
-    written = 0
+    if offline:
+        lib.load_raw(args.offline_library)
+    else:
+        lib.load()
+    store = Store(notion, lib)
+    writer = notion or Notion(None, dry_run=True)
+    unmatched, written = [], 0
     for ev in sorted(new, key=lambda e: e['at'] or ''):
         book, why = None, ''
         cached = state['book_cache'].get(ev['gr_book_id'] or '')
@@ -393,32 +488,39 @@ def run(args):
             unmatched.append({**ev, 'reason': why})
             log('UNMATCHED', ev['kind'], ev['title'], '-', why)
             continue
-        if ev['gr_book_id']:
+        if ev['gr_book_id'] and not offline:
             state['book_cache'][ev['gr_book_id']] = book['id']
-        read = open_read(notion, book['id']) or (recent_read(notion, book['id']) if ev['kind'] == 'finished' else None)
+        read = store.open_read(book['id']) or (store.recent_read(book['id']) if ev['kind'] in ('finished', 'dnf') else None)
         if not read:
             unmatched.append({**ev, 'reason': f"no open Read in Notion for {book['title']}", 'book_id': book['id']})
             log('UNMATCHED', ev['kind'], book['title'], '- no open Read in Notion')
             continue
-        if not args.dry_run and already_logged(notion, ev['guid']):
+        if notion and not args.dry_run and already_logged(notion, ev['guid']):
             log('already in the log', ev['guid'])
         else:
-            notion.create_page(cfg('NOTION_LOG_DS'), log_props(ev, book, read))
+            writer.create_page(cfg('NOTION_LOG_DS') or 'reading-log', log_props(ev, book, read))
             written += 1
-            log('logged', ev['kind'], book['title'], ev.get('page') or ev.get('percent') or '')
-        if ev['kind'] == 'started' and ev['at'] and not prop_date(read['properties'].get('Started')):
-            notion.update_page(read['id'], {'Started': {'date': {'start': ev['at'][:10]}}, 'Dates estimated': {'checkbox': False}})
-            log('set Started on', prop_text(read['properties'].get('Read')), ev['at'][:10])
-        state['seen'][ev['guid']] = ev['at'] or datetime.now().isoformat()
-    if unmatched:
-        UNMATCHED_FILE.write_text(json.dumps(unmatched, indent=1, ensure_ascii=False), encoding='utf-8')
-        log(f'{len(unmatched)} unmatched event(s) written to {UNMATCHED_FILE.name}')
+            log('logged', ev['kind'], book['title'], ev.get('page') or ev.get('percent') or '', '->', read['title'])
+        if ev['kind'] == 'started' and ev['at'] and not read.get('started'):
+            writer.update_page(read['id'], {'Started': {'date': {'start': ev['at'][:10]}}, 'Dates estimated': {'checkbox': False}})
+            log('set Started on', read['title'], ev['at'][:10])
+        if not offline:
+            state['seen'][ev['guid']] = ev['at'] or datetime.now().isoformat()
+    if not new:
+        log('no new events')
+    checks = check_reading(shelf, lib, store)
+    for c in checks:
+        log('CHECK', json.dumps(c, ensure_ascii=False))
+    report = {'at': datetime.now().isoformat(timespec='seconds'), 'unmatched_events': unmatched, 'reading_check': checks}
+    if unmatched or checks:
+        UNMATCHED_FILE.write_text(json.dumps(report, indent=1, ensure_ascii=False), encoding='utf-8')
+        log(f'{len(unmatched)} unmatched event(s), {len(checks)} reading-check item(s) written to {UNMATCHED_FILE.name}')
     elif UNMATCHED_FILE.exists():
         UNMATCHED_FILE.unlink()
-    if not args.dry_run:
-        state['runs'] = (state.get('runs') or [])[-30:] + [{'at': datetime.now().isoformat(timespec='seconds'), 'new': len(new), 'written': written, 'unmatched': len(unmatched)}]
+    if not args.dry_run and not offline:
+        state['runs'] = (state.get('runs') or [])[-30:] + [{'at': report['at'], 'new': len(new), 'written': written, 'unmatched': len(unmatched), 'checks': len(checks)}]
         save_state(state)
-    log(f'done: {written} logged, {len(unmatched)} unmatched' + (' (dry run, nothing saved)' if args.dry_run else ''))
+    log(f'done: {written} logged, {len(unmatched)} unmatched, {len(checks)} check item(s)' + (' (dry run, nothing saved)' if args.dry_run or offline else ''))
     return 0
 
 
@@ -427,4 +529,6 @@ if __name__ == '__main__':
     ap.add_argument('--dry-run', action='store_true', help='read Notion, print the writes, save nothing')
     ap.add_argument('--fixture', help='parse this saved RSS file instead of fetching')
     ap.add_argument('--parse-only', action='store_true', help='print parsed events and stop; no Notion')
+    ap.add_argument('--shelf-fixture', help='parse this saved currently-reading shelf RSS instead of fetching')
+    ap.add_argument('--offline-library', metavar='DIR', help='match against data/raw/*.json instead of Notion; implies dry run')
     sys.exit(run(ap.parse_args()))
