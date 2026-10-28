@@ -173,6 +173,7 @@ def feed_urls():
 
 def fetch_with_retry(url, fetcher=None, sleep=time.sleep, tries=3):
     """Fetch with three attempts and a short backoff; raises the last error."""
+    live = fetcher is None
     fetcher = fetcher or fetch
     last = None
     for attempt in range(tries):
@@ -183,7 +184,7 @@ def fetch_with_retry(url, fetcher=None, sleep=time.sleep, tries=3):
             log(f'fetch failed ({attempt + 1}/{tries}): {url.split("?")[0]} - {e}')
             if attempt + 1 < tries:
                 sleep(5 * (attempt + 1))
-    if os.environ.get('GITHUB_ACTIONS') == 'true':
+    if live and os.environ.get('GITHUB_ACTIONS') == 'true':
         # an annotation is readable through the REST API, so a failed fetch can be diagnosed without the raw log
         msg = f'{type(last).__name__}: {last}'.replace('\n', ' ')[:300]
         print(f'::warning title=Goodreads fetch failed::{url.split("?")[0]} after {tries} tries - {msg}', flush=True)
