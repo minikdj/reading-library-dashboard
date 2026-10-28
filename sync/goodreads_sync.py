@@ -898,6 +898,24 @@ class SyncQueue:
         rows = [queue_norm(r) for r in self.store.notion.query_all(self.ds, {'property': 'Key', 'rich_text': {'equals': key}})]
         return any(r['asked'] and days_between(r['asked'], self.store.today) <= days for r in rows)
 
+    def event_settled(self, kind, key, book, event):
+        """True when a question about this same Goodreads event already exists in any status (2026-10-27 fix).
+
+        An event is one fact, so once its question is answered or dropped it is never asked again. The read shelf and
+        the updates feed report the same finish under different ids (Shelf…:finished:<date> vs ReadStatus…), so a
+        question of the same kind on the same Book about the same event kind and day counts as the same question."""
+        if not self.enabled:
+            return False
+        rows = [queue_norm(r) for r in self.store.notion.query_all(self.ds, {'property': 'Key', 'rich_text': {'equals': key}})]
+        if rows:
+            return True
+        if not book:
+            return False
+        day = local_date(event.get('at'))
+        rows = [queue_norm(r) for r in self.store.notion.query_all(self.ds, {'and': [
+            {'property': 'Kind', 'select': {'equals': kind}}, {'property': 'Book', 'relation': {'contains': book}}]})]
+        return any(r['event'] and r['event'].get('kind') == event.get('kind') and local_date(r['event'].get('at')) == day for r in rows)
+
     def ask(self, kind, question, key, *, book=None, read=None, options='', proposed='', default_applied=False, event=None, guid='', reask_days=None):
         q = {'kind': kind, 'question': question, 'key': key, 'book': book, 'read': read, 'options': options, 'proposed': proposed,
              'default_applied': default_applied, 'event': event, 'guid': guid or (event or {}).get('guid') or '', 'asked': self.store.now}
@@ -905,6 +923,8 @@ class SyncQueue:
             return None  # still open from an earlier run (or already asked this run)
         if reask_days and self.recently_asked(key, reask_days):
             return None  # answered recently; ask again only after the interval
+        if event and not reask_days and self.event_settled(kind, key, book, event):
+            return None  # this Goodreads event was asked about before and Dan answered or dropped it
         self.asked.append(q)
         log('QUESTION', kind, '-', question)
         if not self.enabled:
@@ -1071,15 +1091,15 @@ class Run:
         return read
 
     def close_read(self, read, kind, day, book, ev=None, pages=None, by_dan=False, force=False):
-        """Close an open Read (Ended, Outcome; Pages read on DNF from the log). Dan's Pages read or Ended are never changed."""
+        """Close an open Read (Ended, Outcome; Pages read on DNF from the log). Dan's Pages read or Ended are never changed.
+
+        A Pages read Dan already set never blocks the close (runbook decision 2026-10-27): his workflow is to mark the book
+        read on Goodreads and give the page count in chat, in either order. The close keeps his figure as it is, and no
+        Pages read question is asked, since he has already answered it."""
         if read['outcome']:
             return False
         kind_name = KIND_NAME.get(kind, kind)
-        if read.get('pages_read') is not None and not force and not by_dan:
-            self.queue.ask('Finish date', f'Goodreads says {kind_name} “{book["title"]}” on {day}, but the open Read {read["title"]} already has Pages read {read["pages_read"]:g} (yours): close it?',
-                           'event:' + (ev['guid'] if ev else f'{read["id"]}:{day}'), book=book['id'], read=read['id'], default_applied=True,
-                           proposed='left open', options="Answer 'close' to close it on that date, or 'drop'", event=ev)
-            return False
+        dans_pages = read.get('pages_read') if pages is None else None
         props = {'Outcome': {'select': {'name': kind_name}}}
         ended = read.get('ended')
         if not ended:
@@ -1093,12 +1113,14 @@ class Run:
         if pages is not None:
             props['Pages read'] = {'number': pages}
         line = f"Closed by Dan's answer {self.store.today}" if by_dan else f'Closed from Goodreads {self.store.today}' + (f' (DNF at p.{last})' if last is not None else '')
+        if dans_pages is not None and not by_dan:
+            line += f' (your Pages read {dans_pages:g} kept)'
         self.store.update_read(read, props, line)
         read['outcome'], read['ended'] = kind_name, ended
         if 'Pages read' in props:
             read['pages_read'] = props['Pages read']['number']
         log(f"closed {read['title']}: {kind_name}, Ended {ended}" + (f', Pages read {read["pages_read"]:g}' if read.get('pages_read') is not None else ''))
-        if not by_dan:
+        if not by_dan and dans_pages is None:
             shown = f'{read["pages_read"]:g}' if read.get('pages_read') is not None else 'blank'
             self.queue.ask('Pages read', f'{kind_name} “{book["title"]}” on {ended}; pages read = {shown}?', f'pages:{read["id"]}',
                            book=book['id'], read=read['id'], default_applied=True, proposed=f'Ended {ended}, Pages read {shown}',

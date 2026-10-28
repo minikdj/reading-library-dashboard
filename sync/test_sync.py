@@ -928,14 +928,35 @@ class CloseTests(unittest.TestCase):
         self.assertEqual((p['Outcome']['select']['name'], p['Pages read']['number'], p['Ended']['date']['start']), ('DNF', 125, '2026-10-15'))
         self.assertIn('Closed from Goodreads', notes_of(self.ws, r))
 
-    def test_read_with_dans_pages_read_is_not_closed(self):
+    def test_read_with_dans_pages_read_is_closed_and_his_pages_kept(self):
+        # runbook decision 2026-10-27: Dan's Pages read never blocks a Goodreads finish, and is never overwritten
         r = self.ws.read('Lonesome Dove · 2026', self.book, started='2026-10-04', pages_read=400)
         report, _ = self.ws.sync([self.fin])
         p = self.ws.n.pages[r]['properties']
-        self.assertIsNone(p['Outcome']['select'])
-        q = [q for q in report['questions'] if q['kind'] == 'Finish date'][0]
-        self.assertEqual(q['read'], r)
+        self.assertEqual((p['Ended']['date']['start'], p['Outcome']['select']['name'], p['Pages read']['number']), ('2026-10-15', 'Finished', 400))
+        self.assertIn('your Pages read 400 kept', notes_of(self.ws, r))
+        self.assertEqual([q for q in report['questions'] if q['kind'] in ('Finish date', 'Pages read')], [])  # nothing left to ask
         self.assertEqual(len(self.ws.n.creates(LOG_DS)), 1)  # the event itself is logged
+
+    def test_dnf_with_dans_pages_read_keeps_his_figure(self):
+        r = self.ws.read('Lonesome Dove · 2026', self.book, started='2026-10-04', pages_read=210)
+        self.ws.log('UserStatus1', r, self.book, 'Progress', '2026-10-12', page=125)
+        self.ws.sync([dnf_item('ReadStatus301', 'Thu, 15 Oct 2026 21:00:00 -0400', '56346987', 'Lonesome Dove')])
+        p = self.ws.n.pages[r]['properties']
+        self.assertEqual((p['Outcome']['select']['name'], p['Pages read']['number']), ('DNF', 210))
+
+    def test_feed_then_shelf_finish_with_dans_pages_closes_once_and_asks_nothing(self):
+        # the Uncovering Dinosaur Behavior case: feed finish one night, the read-shelf copy of it on later nights
+        r = self.ws.read('Lonesome Dove · 2026', self.book, started='2026-10-04', pages_read=400)
+        self.ws.sync([self.fin])
+        shelf = [shelf_item('Lonesome Dove', 'Larry McMurtry', added='Thu, 15 Oct 2026 18:00:00 -0700', read_at='Thu, 15 Oct 2026 00:00:00 +0000', book_id='56346987', review='9001')]
+        n = len(self.ws.n.updates(r))
+        for night in ('2026-10-18T23:45:00-04:00', '2026-10-20T23:45:00-04:00'):
+            report, _ = self.ws.sync([], read_shelf=shelf, now=night)
+            self.assertEqual([q for q in report['questions'] if q['kind'] == 'Finish date'], [])
+        self.assertEqual(len(self.ws.n.updates(r)), n)  # the closed Read is not touched again
+        self.assertEqual(self.ws.n.pages[r]['properties']['Pages read']['number'], 400)
+
 
     def test_dans_ended_date_is_kept(self):
         r = self.ws.read('Lonesome Dove · 2026', self.book, started='2026-10-04', ended='2026-10-14')
@@ -965,6 +986,33 @@ class CloseTests(unittest.TestCase):
         self.ws.sync([fin, prog])  # the same feed again: no second note, no new rows
         self.assertEqual(notes_of(self.ws, r).count('Stray Finished'), 1)
         self.assertEqual(len(self.ws.n.creates(LOG_DS)), 1)
+
+
+class SettledEventTests(unittest.TestCase):
+    """A Goodreads event Dan has answered or dropped is never asked about again, under either of its ids (2026-10-27)."""
+
+    def setUp(self):
+        self.ws = Workspace()
+        self.book = self.ws.book('Release It!', 'Michael T. Nygard')
+        sync_run_row(self.ws, '2026-10-14T23:45:00-04:00')
+        self.now = '2026-10-16T23:45:00-04:00'
+        self.shelf = [shelf_item('Release It!: Design and Deploy Production-Ready Software', 'Michael T. Nygard', added='Thu, 15 Oct 2026 05:29:00 -0700',
+                                 read_at='Thu, 15 Oct 2026 00:00:00 +0000', book_id='38733031', review='8984202464')]
+
+    def test_dropped_shelf_finish_is_not_asked_again(self):
+        report, _ = self.ws.sync([], read_shelf=self.shelf, now=self.now)
+        row = self.ws.queue_rows(kind='Finish date')[0]
+        self.ws.n.update_page(row['id'], {'Status': {'select': {'name': 'Dismissed'}}})
+        report, _ = self.ws.sync([], read_shelf=self.shelf, now='2026-10-17T23:45:00-04:00')
+        self.assertEqual([q for q in report['questions'] if q['kind'] == 'Finish date'], [])
+        self.assertEqual(len(self.ws.queue_rows(kind='Finish date')), 1)
+
+    def test_same_finish_under_the_feed_id_counts_as_answered(self):
+        ev = gs.parse_update(FINISHED_ITEM)
+        self.ws.question('Finish date', 'old question', 'event:' + ev['guid'], status='Answered', event=dict(ev, at='2026-10-15T08:00:00-04:00'), book=self.book)
+        report, _ = self.ws.sync([], read_shelf=self.shelf, now=self.now)
+        self.assertEqual([q for q in report['questions'] if q['kind'] == 'Finish date'], [])
+
 
 
 class ReopenTests(unittest.TestCase):

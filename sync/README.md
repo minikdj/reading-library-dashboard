@@ -10,7 +10,7 @@ Goodreads is where Dan marks a book started, posts his page each day and marks i
 4. **Shelves, fenced.** `currently-reading` (always), `read`, `did-not-finish` and `to-read` items dated after the watermark, or whose Book has an open Read, become events (`Shelf<review>:<kind>:<date>`) and go through the same path, so a Finished the feed aged out still closes the Read and a start still creates one. A read-shelf item that disagrees with a closed Read raises a question; it never edits.
 5. **Reads** (the only automatic changes, invariant 2 in the script's docstring):
    - *Create* an open Read on a Started (or a currently-reading item, or progress on a Book whose last Read closed more than 14 days ago): `<Title> · <year>` [(reread)], Started = the event's Eastern date, Dates estimated only when the date is a shelf date or a progress-derived guess, Edition = the only owned copy, else the copy of the last Read, else blank with Format read from the last Read; Edition inferred ✓ when set; Notes "Created from Goodreads <date>".
-   - *Close* on Finished / DNF: Ended (never one Dan set), Outcome, on DNF Pages read = the last logged page; Notes "Closed from Goodreads <date>". A Read with Dan's own Pages read is not closed (question instead).
+   - *Close* on Finished / DNF: Ended (never one Dan set), Outcome, on DNF Pages read = the last logged page; Notes "Closed from Goodreads <date>". A Read with Dan's own Pages read is closed too, and his figure is kept (no Pages read question); see the runbook decision of 2026-10-27.
    - *Reopen* when progress arrives within 14 days of a close the sync made (Notes "Reopened from Goodreads <date>: progress continued"). After a close Dan made it is a question. Later than 14 days is a reread.
    - *Started* is filled when blank and replaces an estimated one; a shelf date only fills a blank and stays flagged estimated.
    - A Finished followed by later progress in the same feed is a stray: skipped and noted once on the Read.
@@ -31,9 +31,9 @@ Every uncertain case is a row in the **Sync queue** (data source `4e8f45b7-8f9c-
 | Kind | Asked when | `Confirm` ✓ | `Answer` |
 |---|---|---|---|
 | Edition | every Read the sync creates | keeps the copy, clears Edition inferred, notes "Confirmed by Dan" | a copy (`Paper`, `Kindle`, a publisher, an Edition title) sets it and clears the flag |
-| Pages read | every Read the sync closes | keeps Ended and Pages read as applied | a page count, `ended YYYY-MM-DD`, or both |
+| Pages read | every Read the sync closes, unless Dan already set Pages read | keeps Ended and Pages read as applied | a page count, `ended YYYY-MM-DD`, or both |
 | Reread or reopen | progress on a Read Dan closed within 14 days | nothing | `reopen` or `reread` |
-| Finish date | a finish that disagrees with a closed Read, or lands on no Read, or on a Read with Dan's Pages read | leaves Notion as is | `attach`, `close`, `new`, or a Read title |
+| Finish date | a finish that disagrees with a closed Read, or lands on no Read | leaves Notion as is | `attach`, `close`, `new`, or a Read title |
 | Still reading | an open Read older than two days that is not on the currently-reading shelf | still reading (asked again after 14 days) | `still`, `finished YYYY-MM-DD [pages N]`, `dnf YYYY-MM-DD [pages N]` |
 | Edition change | Goodreads' page total changed on an open Read | keeps the copy | a copy, as for Edition |
 | Unmatched book | no, or several, Books match the title | leaves the event unlogged | a Notion Book title |
@@ -82,3 +82,7 @@ python3 sync/backfill.py --apply [--dry-run]            write a timeline plan (d
 ```
 
 Files: `sync/state.json` (the Goodreads-id → Book cache, optional), `sync/unmatched.json` (mirror of the open questions and this run's report), `sync/feed_archive/<date>.jsonl` (the raw feed items, appended by id; git-ignored), `~/Library/Logs/goodreads-sync.log` (launchd only).
+
+## Changes
+
+- **2026-10-27** — A Goodreads Finished/DNF now closes an open Read even when Dan already set Pages read; his figure is kept and no Pages read question is asked. Questions about a Goodreads event are asked once: an answered or dropped event is not re-asked, including when the read shelf reports the same finish under a different id. (Found on *Uncovering Dinosaur Behavior*, held open 10-18 → 10-27 and re-asked every other night.)
