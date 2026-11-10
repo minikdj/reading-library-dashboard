@@ -7,6 +7,9 @@ on:
     branches: [sync-widget-profile]
     paths: ['.github/workflows/goodreads-capture.yml']
 
+permissions:
+  contents: write
+
 jobs:
   capture:
     runs-on: ubuntu-latest
@@ -33,11 +36,13 @@ jobs:
           get w_toread.js "$W?shelf=to-read&sort=date_added&order=d&num_books=200&$P&widget_id=t$RANDOM$RANDOM"
           get w_toread_p2.js "$W?shelf=to-read&sort=date_added&order=d&num_books=200&page=2&$P&widget_id=u$RANDOM$RANDOM"
           get status_list.html "https://www.goodreads.com/user_status/list/$UID_"
+          get status_list_p2.html "https://www.goodreads.com/user_status/list/$UID_?page=2"
+          get w_read_100.js "$W?shelf=read&sort=date_added&order=d&num_books=100&$P&widget_id=h$RANDOM$RANDOM"
           get updates_rss.xml "https://www.goodreads.com/user/updates_rss/$UID_"
           get review_list.html "https://www.goodreads.com/review/list/$UID_?shelf=read"
           cat cap/index.tsv
-      - uses: actions/upload-artifact@v4
-        with:
-          name: goodreads-capture
-          path: cap/
-          retention-days: 3
+      - name: Push to a throwaway branch
+        run: |
+          cd cap && git init -q -b capture-tmp && git add -A
+          git -c user.name=capture -c user.email=capture@users.noreply.github.com commit -q -m capture
+          git push -f "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" capture-tmp
