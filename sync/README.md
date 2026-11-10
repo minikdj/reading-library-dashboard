@@ -6,8 +6,10 @@ Goodreads is where Dan marks a book started, posts his page each day and marks i
 
 | Page | What it gives | What it lacks |
 |---|---|---|
-| Status list `/user_status/list/<id>?page=N` | every page update ("is on page N of M", "N% done") with its comment, an exact time (Pacific; "15 hours ago" for the last day) and its own id `UserStatus<n>`, the ids the old feed used; 30 per page, the **whole history** | starts, finishes, DNFs, want-to-reads |
+| Status list `/user_status/list/<id>?page=N` | every page update ("is on page N of M", "N% done") with its comment, its time ("15 hours ago" within a day, exact; older ones a wall-clock time, see below) and its own id `UserStatus<n>`, the ids the old feed used; 30 per page, the **whole history** | starts, finishes, DNFs, want-to-reads |
 | Shelf widget `/review/custom_widget/<id>?shelf=…` | the newest 100 books of a shelf: title, author, review id, Goodreads book id (from the cover) | **any date**; paging (one page of at most 100) |
+
+**Wall-clock times are in a zone Goodreads picks per request**, following where the request comes from: Pacific on most GitHub runners, Central European (+9 h) on one, 2026-11-10. Each run therefore calibrates: updates already in the Reading log with an exact time (from the RSS feed, or seen as "N hours ago") give the zone's offset, and the first candidate zone matching every one converts all wall-clock times with its own daylight-saving rules. With no reference on the page the times are read as Pacific and the row's Raw says "time zone unverified" (such rows are never used as references).
 
 So page updates are now complete (the old feed kept about nine items and lost updates posted between runs), while starts, finishes, DNFs and want-to-reads are shelf changes with **estimated dates** (below). The RSS parser stays for the archived feeds and the tests.
 
@@ -83,7 +85,7 @@ Only the two public pages are fetched (about six requests a night, a second apar
 ## Commands
 
 ```
-python3 -m unittest discover sync                       the tests (156, offline; the fake Notion is in test_sync.py)
+python3 -m unittest discover sync                       the tests (168, offline; the fake Notion is in test_sync.py)
 python3 sync/goodreads_sync.py --dry-run                fetch, read Notion, print the plan, write nothing
 python3 sync/goodreads_sync.py --since 2026-10-01       take events and shelf items after this date (recovery)
 python3 sync/goodreads_sync.py --parse-only --fixture sync/fixtures/status_list.html   print the parsed events of a saved status list page
@@ -97,6 +99,8 @@ python3 sync/backfill.py --apply [--dry-run]            write a timeline plan (d
 Files: `sync/state.json` (the Goodreads-id → Book cache, optional), `sync/unmatched.json` (mirror of the open questions and this run's report), `sync/feed_archive/<date>.jsonl` (the raw status items, appended by id; git-ignored), `~/Library/Logs/goodreads-sync.log` (launchd only).
 
 ## Changes
+
+- **2026-11-10 (2)** — Status times calibrated per run (above). Two guards for reruns over old history (`--since`): an update dated before the open Read's (non-estimated) Started goes to the earlier closed Read covering that day, or becomes a *No open Read* question; and an event older than 14 days never creates a Read (a question instead). Found by a full-history dry run that put June *Lonesome Dove* updates on the October reread and opened a June *Qur'an* Read.
 
 - **2026-11-10** — Goodreads retired its RSS feeds on 2026-10-28; the job had failed every night since. Sources replaced by the status list (page updates, complete history, exact times) and the shelf widget (shelf changes, no dates). Starts, finishes, DNFs and want-to-reads are now found by comparing each shelf with the last run's snapshot and dated by estimate, flagged in Notes and in the Pages read question. A progress row typed in by hand during the outage that is a day off the Goodreads time counts as the same update. Sync run rows keep long JSON whole (several rich-text pieces) instead of cutting it at 2000 characters. Fixtures in `sync/fixtures/` are trimmed captures of the real pages (2026-11-10).
 

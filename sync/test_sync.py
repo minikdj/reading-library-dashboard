@@ -7,6 +7,7 @@ import os
 import re
 import sys
 import unittest
+from datetime import datetime
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -1563,6 +1564,125 @@ class StatusListTests(unittest.TestCase):
     def test_not_a_status_page_raises(self):
         with self.assertRaises(gs.PageError):
             gs.status_items(b'<html><title>Sign in | Goodreads</title></html>', NOW)
+
+
+def shown_it(sid, shown, book_id, title_text, page, total):
+    """A status item as a page shows it older than a day: a wall-clock time in the zone Goodreads picked for the request."""
+    it = status_it(sid, None, book_id, title_text, page, total)
+    when_text = datetime.fromisoformat(shown).strftime('%b %d, %Y %I:%M%p')
+    it.update({'when_text': when_text, 'naive': gs.shown_time(when_text), 'at': gs.status_time(when_text, NOW)})
+    return it
+
+
+class StatusTimeZoneTests(unittest.TestCase):
+    """Goodreads shows older updates in a zone it picks per request (Central European on one runner, 2026-11-10)."""
+
+    def test_offset_from_a_known_update(self):
+        # shown in Central European time: Vanity Fair p.230 was 22:45 UTC (RSS), shown 00:45 on Oct 22 (CEST, +2)
+        known = {'UserStatus1353431483': '2026-10-21T22:45:00.000Z'}
+        items = [shown_it(1353431483, '2026-10-22T00:45', 5797, 'Vanity Fair', 230, 867),
+                 shown_it(1351886667, '2026-10-19T03:44', 5797, 'Vanity Fair', 5, 867),
+                 shown_it(1300000000, '2026-02-14T03:30', 1, 'Earlier', 1, 9)]
+        cal = gs.calibrate_status_times(items, known)
+        self.assertEqual((cal['zone'], cal['offsets']), ('Europe/Amsterdam', [120]))
+        self.assertEqual(items[1]['at'], '2026-10-19T03:44:00+02:00')
+        self.assertEqual(gs.local_date(items[1]['at']), '2026-10-18')  # 21:44 Eastern, not the 19th
+        self.assertEqual(items[2]['at'], '2026-02-14T03:30:00+01:00')  # winter time from an October reference
+        self.assertEqual(gs.local_date(items[2]['at']), '2026-02-13')
+
+    def test_pacific_pages_stay_pacific(self):
+        known = {'UserStatus1353431483': '2026-10-21T22:45:00.000Z'}
+        items = [shown_it(1353431483, '2026-10-21T15:45', 5797, 'Vanity Fair', 230, 867), shown_it(2, '2026-02-13T18:30', 1, 'Earlier', 1, 9)]
+        self.assertEqual(gs.calibrate_status_times(items, known)['zone'], 'America/Los_Angeles')
+        self.assertEqual(items[1]['at'], '2026-02-13T18:30:00-08:00')
+
+    def test_nearest_reference_follows_a_clock_change(self):
+        known = {'UserStatus1': '2026-10-24T12:00:00+00:00', 'UserStatus2': '2026-10-27T12:00:00+00:00'}
+        items = [shown_it(1, '2026-10-24T14:00', 1, 'A', 1, 9), shown_it(2, '2026-10-27T13:00', 1, 'A', 2, 9),  # CEST, then CET
+                 shown_it(3, '2026-10-24T20:00', 1, 'A', 3, 9), shown_it(4, '2026-10-28T20:00', 1, 'A', 4, 9)]
+        cal = gs.calibrate_status_times(items, known)
+        self.assertEqual((cal['zone'], cal['offsets']), ('Europe/Amsterdam', [60, 120]))
+        self.assertEqual((items[2]['at'], items[3]['at']), ('2026-10-24T20:00:00+02:00', '2026-10-28T20:00:00+01:00'))
+
+    def test_no_zone_fits_uses_the_nearest_reference(self):
+        known = {'UserStatus1': '2026-10-24T12:00:00+00:00'}
+        items = [shown_it(1, '2026-10-24T17:45', 1, 'A', 1, 9), shown_it(3, '2026-10-24T20:00', 1, 'A', 3, 9)]  # +5:45 (Nepal) is no candidate
+        cal = gs.calibrate_status_times(items, known)
+        self.assertEqual((cal['zone'], cal['offsets']), (None, [345]))
+        self.assertEqual((items[1]['zone'], items[1]['at']), ('offset', '2026-10-24T14:15:00+00:00'))
+
+    def test_no_reference_keeps_pacific_and_marks_the_row(self):
+        items = [shown_it(9, '2026-11-08T20:44', 56346987, 'Lonesome Dove', 419, 964)]
+        self.assertEqual(gs.calibrate_status_times(items, {})['zone'], None)
+        self.assertEqual(items[0]['at'], '2026-11-08T20:44:00-08:00')
+        ev = gs.status_event(items[0])
+        self.assertIn(gs.UNVERIFIED, ev['raw'])
+
+    def test_relative_times_need_no_reference(self):
+        it = status_it(5, gs.status_time('3 hours ago', NOW), 5797, 'Vanity Fair', 610, 867)
+        it['naive'] = None
+        gs.calibrate_status_times([it], {})
+        self.assertNotIn('zone', it)
+        self.assertEqual(it['at'], '2026-11-10T04:30:00-05:00')
+
+    def test_run_corrects_times_from_the_log(self):
+        ws = Workspace()
+        b = ws.book('Vanity Fair', 'William Makepeace Thackeray')
+        r = ws.read('Vanity Fair · 2026', b, started='2026-10-18')
+        ws.log('UserStatus1353431483', r, b, 'Progress', '2026-10-21T22:45:00.000Z', page=230)
+        run_row(ws, '2026-10-20T07:00:00-04:00', snapshot={})
+        ws.sync([shown_it(1353431483, '2026-10-22T00:45', 5797, 'Vanity Fair', 230, 867),
+                 shown_it(1351886667, '2026-10-19T03:44', 5797, 'Vanity Fair', 5, 867)], now='2026-10-21T23:50:00-04:00')
+        rows = ws.n.creates(LOG_DS)
+        self.assertEqual(len(rows), 1)
+        self.assertEqual((rows[0]['When']['date']['start'], _plain(rows[0]['Name']['title'])), ('2026-10-19T03:44:00+02:00', 'Vanity Fair · Progress p.5 · 2026-10-18'))
+        self.assertNotIn(gs.UNVERIFIED, _plain(rows[0]['Raw']['rich_text']))
+
+    def test_unverified_rows_are_never_references(self):
+        ws = Workspace()
+        b = ws.book('Vanity Fair', 'William Makepeace Thackeray')
+        r = ws.read('Vanity Fair · 2026', b, started='2026-10-18')
+        pid = ws.log('UserStatus1', r, b, 'Progress', '2026-10-21T22:45:00-07:00', page=230)
+        ws.n.pages[pid]['properties']['Raw'] = text(f'x ({gs.UNVERIFIED})')
+        ws.log('UserStatus2', r, b, 'Progress', '2026-10-22T22:45:00-07:00', page=240)
+        store = gs.Store(ws.n, None)
+        self.assertEqual(store.known_status_times('2026-10-01'), {'UserStatus2': '2026-10-22T22:45:00-07:00'})
+
+
+class DeepHistoryTests(unittest.TestCase):
+    """A --since rerun over old history: events land on the Read of their own date, and never create Reads."""
+
+    def setUp(self):
+        self.ws = Workspace()
+        self.book = self.ws.book('Lonesome Dove', 'Larry McMurtry')
+        self.june = self.ws.read('Lonesome Dove · 2026', self.book, started='2026-06-20', ended='2026-06-30', outcome='Finished')
+        self.reread = self.ws.read('Lonesome Dove · 2026 (reread)', self.book, started='2026-10-04')
+
+    def test_an_update_from_an_earlier_read_lands_on_it(self):
+        self.ws.log('Timeline1:3', self.june, self.book, 'Progress', '2026-06-24', page=230)
+        report, _ = self.ws.sync([status_it(11, '2026-06-24T18:10:00-07:00', 56346987, 'Lonesome Dove', 230, 964),
+                                  status_it(12, '2026-06-26T20:39:00-07:00', 56346987, 'Lonesome Dove', 435, 964)],
+                                 now=NOW, since='2026-01-01')
+        rows = self.ws.n.creates(LOG_DS)
+        self.assertEqual([(r['Page']['number'], r['Read']['relation'][0]['id']) for r in rows], [(435, self.june)])
+        self.assertEqual(report['already'], 1)
+
+    def test_an_update_no_read_covers_is_a_question(self):
+        report, _ = self.ws.sync([status_it(13, '2026-05-01T18:00:00-07:00', 56346987, 'Lonesome Dove', 50, 964)], now=NOW, since='2026-01-01')
+        self.assertEqual(self.ws.n.creates(LOG_DS), [])
+        self.assertEqual([q['kind'] for q in report['questions'] if q['kind'] != 'Gap'], ['No open Read'])
+
+    def test_an_old_update_never_creates_a_read(self):
+        quran = self.ws.book("The Qur'an", 'Anonymous')
+        report, _ = self.ws.sync([status_it(14, '2026-06-03T12:27:00-07:00', 1, "The Qur'an", 116, 600)], now=NOW, since='2026-01-01')
+        self.assertEqual(self.ws.n.creates(READS_DS), [])
+        q = [q for q in report['questions'] if q['kind'] == 'No open Read']
+        self.assertEqual((len(q), q[0]['book']), (1, quran))
+
+    def test_a_recent_update_still_creates_a_read(self):
+        b = self.ws.book('Middlemarch', 'George Eliot')
+        self.ws.sync([status_it(15, '2026-11-08T18:00:00-08:00', 19089, 'Middlemarch', 40, 900)], now=NOW)
+        self.assertEqual(len(self.ws.n.creates(READS_DS)), 1)
 
 
 class WidgetTests(unittest.TestCase):

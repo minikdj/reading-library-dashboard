@@ -358,8 +358,19 @@ STATUS_BOOK = re.compile(r'<a[^>]*/book/show/(?P<id>\d+)[^>]*>(?P<t>.*?)</a>', r
 REL_UNIT = {'sec': 1, 'min': 60, 'hou': 3600, 'day': 86400}
 
 
+def shown_time(text):
+    """An absolute status-list time ('Nov 08, 2026 08:44PM') as a naive ISO wall-clock time, or None (relative or unreadable)."""
+    try:
+        return datetime.strptime(squeeze(text), '%b %d, %Y %I:%M%p').isoformat()
+    except ValueError:
+        return None
+
+
 def status_time(text, fetched_at):
-    """A status-list time as ISO: 'Nov 08, 2026 08:44PM' is Pacific; '15 hours, 59 min ago' counts back from the fetch."""
+    """A status-list time as ISO. '15 hours, 59 min ago' counts back from the fetch and is exact. 'Nov 08, 2026 08:44PM'
+    is a wall-clock time in a zone Goodreads picks per request (it follows where the request comes from: Pacific on most
+    GitHub runners, Central European on one, 2026-11-10), so it is read as Pacific here and corrected by
+    calibrate_status_times against updates whose exact time is already known."""
     t = squeeze(text)
     try:
         return datetime.strptime(t, '%b %d, %Y %I:%M%p').replace(tzinfo=ZoneInfo(GR_TZ)).isoformat()
@@ -388,11 +399,55 @@ def status_items(page, fetched_at):
         book, body = STATUS_BOOK.search(head.group('h')), STATUS_BODY.search(chunk)
         when = re.search(r'href="/user_status/show/' + sid + r'">(?P<w>[^<]+)</a>', chunk)
         note = squeeze(strip_tags(body.group('b'))) if body else ''
+        when_text = squeeze(when.group('w')) if when else ''
         out.append({'guid': f'UserStatus{sid}', 'sid': sid, 'text': squeeze(strip_tags(head.group('h'))),
                     'title': squeeze(strip_tags(book.group('t'))) if book else '', 'book_id': book.group('id') if book else '',
-                    'note': note or None, 'when_text': squeeze(when.group('w')) if when else '',
-                    'at': status_time(when.group('w'), fetched_at) if when else None, 'source': 'status'})
+                    'note': note or None, 'when_text': when_text, 'naive': shown_time(when_text),
+                    'at': status_time(when_text, fetched_at) if when else None, 'source': 'status'})
     return out, (int(m.group(1)) if m else None)
+
+
+# Zones Goodreads might show times in, in order of preference when several fit the references equally well
+# (GitHub's runners are mostly in US and European Azure regions).
+ZONE_CANDIDATES = ('America/Los_Angeles', 'America/Denver', 'America/Phoenix', 'America/Chicago', 'America/New_York', 'UTC',
+                   'Europe/London', 'Europe/Amsterdam', 'Europe/Helsinki', 'Africa/Johannesburg', 'Asia/Dubai', 'Asia/Kolkata',
+                   'Asia/Singapore', 'Asia/Tokyo', 'Australia/Sydney', 'America/Sao_Paulo', 'Pacific/Honolulu')
+
+
+def calibrate_status_times(items, known):
+    """Correct the absolute times on status items for the zone Goodreads showed them in on this request.
+
+    known = {guid: exact ISO time} for updates already in the Reading log (from the RSS feed, or seen within a day of
+    being posted, when the list shows "N hours ago"). Each one also shown as a wall-clock time gives the zone's offset at
+    that moment (shown minus exact, in whole quarter hours). The first candidate zone whose offset matches every
+    reference converts every wall-clock time with its own daylight-saving rules, so references from October also
+    convert February correctly. If no candidate fits, each item takes the offset of the reference nearest in time.
+    Items get zone = the zone's name, 'offset', or 'unverified' when the page has no reference (the Pacific reading
+    stays). Returns {'zone': name or None, 'offsets': sorted offsets in minutes, 'refs': count}."""
+    refs = []
+    for it in items:
+        if it.get('naive') and it['guid'] in known:
+            exact = to_dt(known[it['guid']]).astimezone(timezone.utc)
+            shown = datetime.fromisoformat(it['naive'])
+            off = round((shown - exact.replace(tzinfo=None)).total_seconds() / 900) * 15
+            if -12 * 60 <= off <= 14 * 60:
+                refs.append((shown, exact, off))
+    zone = None
+    if refs:
+        zone = next((z for z in ZONE_CANDIDATES
+                     if all(round(e.astimezone(ZoneInfo(z)).utcoffset().total_seconds() / 60) == o for _, e, o in refs)), None)
+    for it in items:
+        if not it.get('naive'):
+            continue
+        shown = datetime.fromisoformat(it['naive'])
+        if zone:
+            it['at'], it['zone'] = shown.replace(tzinfo=ZoneInfo(zone)).isoformat(), zone
+        elif refs:
+            off = min(refs, key=lambda r: abs((r[0] - shown).total_seconds()))[2]
+            it['at'], it['zone'] = (shown - timedelta(minutes=off)).replace(tzinfo=timezone.utc).isoformat(), 'offset'
+        else:
+            it['zone'] = 'unverified'
+    return {'zone': zone, 'offsets': sorted({o for _, _, o in refs}), 'refs': len(refs)}
 
 
 WIDGET_EACH = re.compile(r'class="gr_custom_each_container_\w+">')
@@ -507,6 +562,9 @@ def add_progress(ev, m):
     return ev
 
 
+UNVERIFIED = 'time zone unverified'
+
+
 def status_event(it):
     """One status-list item as a progress event (the list holds page updates only), or None."""
     for kind, pat in PATTERNS:
@@ -515,8 +573,9 @@ def status_event(it):
         m = pat.match(it['text'])
         if not m or len(m.group('who').split()) > 3:
             continue
+        raw = it['text'] + (f" (shown {it['when_text']}; {UNVERIFIED})" if it.get('zone') == 'unverified' else '')
         ev = {'kind': 'progress', 'title': it['title'] or unquote(m.group('title')), 'author': it.get('author'),
-              'gr_book_id': it['book_id'] or None, 'guid': it['guid'], 'at': it['at'], 'raw': it['text'], 'note': it['note'],
+              'gr_book_id': it['book_id'] or None, 'guid': it['guid'], 'at': it['at'], 'raw': raw, 'note': it['note'],
               'review_url': None, 'source': 'status'}
         return add_progress(ev, m)
     return None
@@ -537,17 +596,24 @@ class Notion:
         req = urllib.request.Request(NOTION_API + path, data=data, method=method, headers={
             'Authorization': f'Bearer {self.token}', 'Notion-Version': NOTION_VERSION,
             'Content-Type': 'application/json', 'User-Agent': USER_AGENT})
-        for attempt in range(4):
+        last = None
+        for attempt in range(6):
             try:
                 with urllib.request.urlopen(req, timeout=60) as r:
                     return json.loads(r.read().decode('utf-8'))
             except urllib.error.HTTPError as e:
                 detail = e.read().decode('utf-8', 'replace')[:500]
                 if e.code == 429 or e.code >= 500:
-                    time.sleep(2 ** attempt)
+                    # Notion's rate limit answers 429 with Retry-After; a long rerun over history can hit it
+                    wait = e.headers.get('Retry-After') if e.headers else None
+                    last = f'{e.code}: {detail[:200]}'
+                    time.sleep(max(float(wait) if wait and wait.replace('.', '', 1).isdigit() else 0, 2 ** attempt))
                     continue
                 raise RuntimeError(f'Notion {method} {path} -> {e.code}: {detail}')
-        raise RuntimeError(f'Notion {method} {path}: gave up after retries')
+            except (urllib.error.URLError, TimeoutError) as e:  # a dropped connection is as temporary as a 502
+                last = str(e)
+                time.sleep(2 ** attempt)
+        raise RuntimeError(f'Notion {method} {path}: gave up after retries ({last})')
 
     def query_all(self, ds_id, flt=None, page_size=100):
         cursor, out = None, []
@@ -938,6 +1004,29 @@ class Store:
         # sync was down (2026-10-28 to 11-10) is sometimes dated the morning after the Goodreads timestamp
         return (kind_name == 'Progress' and page is not None and bool(date)
                 and any(r['page'] == page and r['date'] and days_between(r['date'], date) <= AGREE_DAYS for r in rows))
+
+    def known_status_times(self, since):
+        """{UserStatus guid: exact time} for Reading log rows on or after `since` whose time is trusted (a time of day,
+        and not marked unverified): the references for calibrate_status_times."""
+        if not self.notion or not since:
+            return {}
+        flt = {'and': [{'property': 'Goodreads id', 'rich_text': {'starts_with': 'UserStatus'}},
+                       {'property': 'When', 'date': {'on_or_after': since[:10]}}]}
+        out = {}
+        for r in self.notion.query_all(cfg('NOTION_LOG_DS'), flt):
+            p = r['properties']
+            when = prop_date(p.get('When'))
+            if when and len(when) > 10 and UNVERIFIED not in prop_text(p.get('Raw')):
+                out[prop_text(p.get('Goodreads id'))] = when
+        return out
+
+    def read_covering(self, book_id, day):
+        """The closed Read of this Book whose Started..Ended (plus AGREE_DAYS) holds day, the latest such; or None."""
+        hits = [r for r in self.reads_for_book(book_id)
+                if r['outcome'] and r['started'] and r['ended'] and r['started'] <= day
+                and (day <= r['ended'] or days_between(day, r['ended']) <= AGREE_DAYS)]
+        hits.sort(key=lambda r: r['started'], reverse=True)
+        return hits[0] if hits else None
 
     def last_progress_page(self, read_id):
         pages = [r['page'] for r in self.log_rows(read_id, 'Progress') if r['page'] is not None]
@@ -1439,6 +1528,13 @@ class Run:
         kind_name = KIND_NAME[kind]
         if not read:
             read = self.store.open_read(book['id'])
+            if read and day and kind != 'started' and read.get('started') and day < read['started'] and not read.get('dates_estimated'):
+                # an event from before this Read began belongs to an earlier Read (deep history, or before a reread)
+                earlier = self.store.read_covering(book['id'], day)
+                if not earlier:
+                    log('BEFORE THE OPEN READ', kind_name, book['title'], day, 'vs', read['title'], read['started'])
+                    return {'status': 'no_read', 'book': book, 'why': f"{kind_name} on {day} is before {read['title']} started ({read['started']}), and no earlier Read covers that day"}
+                read = earlier
         if stray:
             target = read or self.store.recent_read(book['id'])
             marker = f'Stray {kind_name} from Goodreads {day} skipped'
@@ -1448,6 +1544,9 @@ class Run:
             return {'status': 'stray', 'book': book, 'read': target}
         if not read and day:
             recent = self.store.recent_read(book['id'])
+            # only a recent event creates a Read; an old one (a --since rerun over history) is a question instead
+            old = day < self.store.today and days_between(day, self.store.today) > REOPEN_DAYS
+            too_old = {'status': 'no_read', 'book': book, 'why': f'{kind_name} on {day} has no Read to land on, and events older than {REOPEN_DAYS} days never create one'}
             if recent and recent['outcome'] and recent['ended']:
                 gap = days_between(recent['ended'], day)
                 if day <= recent['ended']:
@@ -1465,6 +1564,8 @@ class Run:
                     elif gap <= REOPEN_DAYS and not force_new:
                         log('FINISH DATE DIFFERS', book['title'], day, 'vs', recent['title'], recent['ended'])
                         return {'status': 'finish_mismatch', 'book': book, 'read': recent, 'why': f"Notion's {recent['title']} ended {recent['ended']}, Goodreads says {day}"}
+                    elif old:
+                        return too_old
                     else:
                         read = self.create_read(book, day, True, f'{kind_name} on a reread with no Started event; start date estimated')
                 elif gap <= REOPEN_DAYS and not force_new:
@@ -1473,6 +1574,8 @@ class Run:
                     else:
                         log('PROGRESS AFTER A CLOSE', book['title'], day, 'vs', recent['title'], recent['ended'])
                         return {'status': 'reread_or_reopen', 'book': book, 'read': recent, 'why': f"{recent['title']} was finished on {recent['ended']}"}
+                elif old:
+                    return too_old
                 else:
                     read = self.create_read(book, day, kind != 'started' or bool(ev.get('estimated')),
                                             'start date estimated from the currently-reading shelf' if ev.get('estimated') else
@@ -1481,6 +1584,8 @@ class Run:
                 if kind in ('finished', 'dnf'):
                     log('NO READ AT ALL', kind, book['title'])
                     return {'status': 'no_read', 'book': book, 'why': f"no Read of {book['title']} in Notion"}
+                if old:
+                    return too_old
                 read = self.create_read(book, day, kind != 'started' or bool(ev.get('estimated')),
                                         'start date estimated from the currently-reading shelf' if ev.get('estimated') else
                                         ('progress on a read with no Started event; start date estimated' if kind != 'started' else ''))
@@ -1880,6 +1985,21 @@ def run_sync(notion, items, shelves, state, *, dry_run=False, offline_lib=None, 
     fetched). `history_cut` is the oldest status read when older history was left unread. Returns the report; the
     writes are in report['plan']."""
     now = now or now_iso()
+    lib = offline_lib or Library(notion)
+    if not offline_lib:
+        lib.load()
+    store = Store(notion, lib, dry_run=dry_run, today=local_date(now))
+    store.now = now
+    # wall-clock times on the status list are in a zone Goodreads picks per request: correct them against known updates
+    shown = sorted(it['naive'] for it in items if it.get('naive'))
+    if shown:
+        cal = calibrate_status_times(items, store.known_status_times((datetime.fromisoformat(shown[0]) - timedelta(days=2)).date().isoformat()))
+        if cal['zone']:
+            log(f"status times: shown in {cal['zone']} (from {cal['refs']} update(s) with known times)")
+        elif cal['refs']:
+            log(f"CHECK status times: no single zone fits {cal['refs']} reference(s) (offsets {cal['offsets']} min); nearest reference used")
+        else:
+            log(f'CHECK status times: no update with a known time on the page; {len(shown)} wall-clock time(s) read as Pacific and marked unverified')
     events = [e for e in (to_event(it) for it in items) if e]
     # status updates name no author: take it from the shelves by Goodreads book id, for matching
     authors = {it['book_id']: it['author_name'] for v in shelves.values() for it in v if it.get('book_id') and it.get('author_name')}
@@ -1887,11 +2007,6 @@ def run_sync(notion, items, shelves, state, *, dry_run=False, offline_lib=None, 
         if not e.get('author') and e.get('gr_book_id') in authors:
             e['author'] = authors[e['gr_book_id']]
     log(f'status: {len(items)} items, {len(events)} tracked events; shelves: ' + ', '.join(f'{k} {len(v)}' for k, v in shelves.items()))
-    lib = offline_lib or Library(notion)
-    if not offline_lib:
-        lib.load()
-    store = Store(notion, lib, dry_run=dry_run, today=local_date(now))
-    store.now = now
     queue = SyncQueue(store)
     run = Run(store, lib, queue, state)
     run.to_read_by_id = {it['book_id']: it for it in shelves.get('to-read', []) if it.get('book_id')}
