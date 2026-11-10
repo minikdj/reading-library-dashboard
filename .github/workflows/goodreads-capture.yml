@@ -1,0 +1,43 @@
+# TEMPORARY: captures the raw Goodreads widget and profile responses that replace the retired RSS
+# feeds, so the new parsers can be written against real markup. Removed before merge.
+name: Goodreads capture (temporary)
+
+on:
+  push:
+    branches: [sync-widget-profile]
+    paths: ['.github/workflows/goodreads-capture.yml']
+
+jobs:
+  capture:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Capture
+        env:
+          UID_: ${{ secrets.GOODREADS_USER_ID }}
+        run: |
+          mkdir cap
+          UA='reading-library-sync/1.0'
+          get() { # name url [ua]
+            curl -sS -L --max-time 30 -A "${3:-$UA}" -o "cap/$1" -w "$1\t%{http_code}\t%{url_effective}\t%{size_download}\n" "$2" >> cap/index.tsv || echo "$1 FAILED" >> cap/index.tsv
+            sleep 2
+          }
+          W="https://www.goodreads.com/review/custom_widget/$UID_"
+          P="show_title=1&show_author=1&show_cover=1&show_rating=1&show_review=1&show_tags=1&cover_size=small&widget_bg_color=FFFFFF&widget_text_color=000000&widget_title_color=4c4c4c&widget_width=medium"
+          get profile.html "https://www.goodreads.com/user/show/$UID_"
+          get profile_browser_ua.html "https://www.goodreads.com/user/show/$UID_" 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36'
+          get w_currently.js "$W?shelf=currently-reading&sort=date_added&order=d&num_books=200&$P&widget_id=c$RANDOM$RANDOM"
+          get w_read_added.js "$W?shelf=read&sort=date_added&order=d&num_books=200&$P&widget_id=r$RANDOM$RANDOM"
+          get w_read_dateread.js "$W?shelf=read&sort=date_read&order=d&num_books=200&$P&widget_id=d$RANDOM$RANDOM"
+          get w_dnf.js "$W?shelf=did-not-finish&sort=date_added&order=d&num_books=200&$P&widget_id=n$RANDOM$RANDOM"
+          get w_toread.js "$W?shelf=to-read&sort=date_added&order=d&num_books=200&$P&widget_id=t$RANDOM$RANDOM"
+          get w_toread_p2.js "$W?shelf=to-read&sort=date_added&order=d&num_books=200&page=2&$P&widget_id=u$RANDOM$RANDOM"
+          get status_list.html "https://www.goodreads.com/user_status/list/$UID_"
+          get updates_rss.xml "https://www.goodreads.com/user/updates_rss/$UID_"
+          get review_list.html "https://www.goodreads.com/review/list/$UID_?shelf=read"
+          cat cap/index.tsv
+      - uses: actions/upload-artifact@v4
+        with:
+          name: goodreads-capture
+          path: cap/
+          retention-days: 3
