@@ -1,10 +1,12 @@
 # Filling a gap in the Reading log by hand
 
-The nightly sync reads only the public Goodreads RSS feeds, anonymously. The updates feed keeps a short window (about nine items), so page updates posted faster than one night's worth can age out before the job sees them. When that happens the job raises a **Gap** question in the Sync queue ("Page updates between … and … may be missing") and the shelves still recover any Started or Finished the feed dropped; only the page-by-page progress is lost. This is how to fill it, on request, from Dan's own machine. The job itself never fetches review pages and never holds Goodreads credentials.
+Since 2026-11-10 the nightly sync reads two public Goodreads pages, anonymously: the status list, which keeps **every** page update with its time, and the shelf widget, which has **no dates**. So page updates no longer go missing, but a start, finish or DNF found on a shelf gets an estimated date (the most recent evening; the Read's Notes and its Pages read question say "estimated"). The exact days live on the review page's **Reading Progress** timeline, which needs a sign-in. This is how to read them, on request, from Dan's own machine. The job itself never fetches review pages and never holds Goodreads credentials.
+
+(Before 2026-10-28 the job read the RSS feeds, whose updates feed kept about nine items, and this procedure filled lost page updates. Goodreads retired the feeds that day.)
 
 ## When it is worth doing
 
-Only when the missing span covers a book Dan cares to have a full progress curve for. A Gap question with `Confirm` ticked means "doesn't matter"; nothing else happens.
+Only when an estimated start or finish date matters to Dan (reading speed, a year boundary), or a Gap question names a span the job did not read. A question with `Confirm` ticked means "doesn't matter"; nothing else happens. For an estimated finish, the quicker fix is answering the Pages read question with `ended YYYY-MM-DD`.
 
 ## Procedure (Claude, in a desktop session with the browser pane)
 
@@ -19,7 +21,7 @@ Only when the missing span covers a book Dan cares to have a full progress curve
 
 | Key | Where it comes from |
 |---|---|
-| `Goodreads id` = `ReadStatus…` / `UserStatus…` | the updates feed (the sync) |
+| `Goodreads id` = `ReadStatus…` / `UserStatus…` | the updates feed until 2026-10-28; `UserStatus…` from the status list since (the sync) |
 | `Goodreads id` = `Shelf<review>:<kind>:<date>` | a shelf item inside the fence (the sync) |
 | `Goodreads id` = `Timeline<review>:<n>` | a review page's timeline (the backfill, this procedure) |
 | `Goodreads id` = `Backfill:…` | rows added by hand in chat on 2026-10-17 |

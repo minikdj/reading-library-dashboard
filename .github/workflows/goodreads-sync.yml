@@ -37,14 +37,13 @@ jobs:
         env:
           NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
           GOODREADS_USER_ID: ${{ secrets.GOODREADS_USER_ID }}
-          GOODREADS_RSS_KEY: ${{ secrets.GOODREADS_RSS_KEY }}
           SYNC_TZ: America/New_York
         run: |
           args=""
           if [ "${{ inputs.dry_run }}" = "true" ]; then args="$args --dry-run"; fi
           if [ -n "${{ inputs.since }}" ]; then args="$args --since ${{ inputs.since }}"; fi
           python3 sync/goodreads_sync.py $args
-      - name: Keep the run's questions and feed archive
+      - name: Keep the run's questions and status archive
         if: always()
         uses: actions/upload-artifact@v4
         with:
