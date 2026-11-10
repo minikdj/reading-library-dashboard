@@ -596,17 +596,24 @@ class Notion:
         req = urllib.request.Request(NOTION_API + path, data=data, method=method, headers={
             'Authorization': f'Bearer {self.token}', 'Notion-Version': NOTION_VERSION,
             'Content-Type': 'application/json', 'User-Agent': USER_AGENT})
-        for attempt in range(4):
+        last = None
+        for attempt in range(6):
             try:
                 with urllib.request.urlopen(req, timeout=60) as r:
                     return json.loads(r.read().decode('utf-8'))
             except urllib.error.HTTPError as e:
                 detail = e.read().decode('utf-8', 'replace')[:500]
                 if e.code == 429 or e.code >= 500:
-                    time.sleep(2 ** attempt)
+                    # Notion's rate limit answers 429 with Retry-After; a long rerun over history can hit it
+                    wait = e.headers.get('Retry-After') if e.headers else None
+                    last = f'{e.code}: {detail[:200]}'
+                    time.sleep(max(float(wait) if wait and wait.replace('.', '', 1).isdigit() else 0, 2 ** attempt))
                     continue
                 raise RuntimeError(f'Notion {method} {path} -> {e.code}: {detail}')
-        raise RuntimeError(f'Notion {method} {path}: gave up after retries')
+            except (urllib.error.URLError, TimeoutError) as e:  # a dropped connection is as temporary as a 502
+                last = str(e)
+                time.sleep(2 ** attempt)
+        raise RuntimeError(f'Notion {method} {path}: gave up after retries ({last})')
 
     def query_all(self, ds_id, flt=None, page_size=100):
         cursor, out = None, []
