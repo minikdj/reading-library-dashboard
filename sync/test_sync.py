@@ -1470,17 +1470,276 @@ class FetchTests(unittest.TestCase):
 
     def test_gather_reports_what_failed(self):
         def fetcher(url, timeout=30):
-            if 'updates_rss' in url:
+            if 'user_status/list' in url:
                 raise OSError('down')
-            if 'currently-reading' in url:
-                return b'<rss><channel><item><guid>https://www.goodreads.com/review/show/1</guid><title>Lonesome Dove</title><book_id>1</book_id><author_name>Larry McMurtry</author_name></item></channel></rss>'
-            return b'<rss><channel></channel></rss>'
+            m = re.search(r'shelf=([\w-]+)', url)
+            return (FIX / f'widget_{m.group(1)}.js').read_bytes()
         os.environ['GOODREADS_USER_ID'] = '1'
-        items, shelves, failed = gs.gather(gs.feed_urls(), {}, fetcher=fetcher, sleep=lambda s: None)
+        items, shelves, failed, cut = gs.gather(gs.source_urls(), {}, fetcher=fetcher, sleep=lambda s: None, now=NOW)
         self.assertIsNone(items)
         self.assertEqual(sorted(shelves), ['currently-reading', 'did-not-finish', 'read', 'to-read'])
-        self.assertEqual(len(shelves['currently-reading']), 1)
-        self.assertEqual(failed, ['updates'])
+        self.assertEqual(len(shelves['currently-reading']), 3)
+        self.assertEqual((failed, cut), (['status'], None))
+
+    def test_a_sign_in_redirect_is_a_failure_not_an_empty_shelf(self):
+        def fetcher(url, timeout=30):
+            if 'user_status/list' in url:
+                return b'<html><title>Sign in</title></html>'
+            return b'var widget_code = \'<div>sign in</div>\''.replace(b'widget_code', b'other')
+        os.environ['GOODREADS_USER_ID'] = '1'
+        items, shelves, failed, _ = gs.gather(gs.source_urls(), {}, fetcher=fetcher, sleep=lambda s: None, now=NOW)
+        self.assertIsNone(items)
+        self.assertEqual(shelves, {})
+        self.assertEqual(failed, ['status', 'currently-reading', 'read', 'did-not-finish', 'to-read'])
+
+    def test_status_pages_are_read_back_to_the_lookback(self):
+        page = (FIX / 'status_list.html').read_text(encoding='utf-8')
+        calls = []
+
+        def fetcher(url, timeout=30):
+            calls.append(url)
+            n = int(url.rsplit('=', 1)[1])
+            # thirty copies of one update per page, each page a week older than the last
+            one = page.split('<div id="user_status_')[2].split('<div class="elementList">')[0]
+            body = ''.join('<div id="user_status_' + one.replace('1362454748', f'{n}{i:03d}').replace('Nov 08, 2026', f'Nov 0{9 - n}, 2026' if n < 9 else 'Oct 01, 2026')
+                           for i in range(30))
+            return (page.split('<div id="user_status_')[0] + body).encode('utf-8')
+        items, cut = gs.fetch_status('https://x/?page={page}', '2026-11-05T00:00:00-05:00', fetcher=fetcher, sleep=lambda s: None, now=NOW)
+        self.assertEqual(len(calls), 5)  # page 5 holds Nov 04 Pacific, the first past the stop
+        self.assertIsNone(cut)
+        items, cut = gs.fetch_status('https://x/?page={page}', '2026-10-01T00:00:00-04:00', fetcher=fetcher, sleep=lambda s: None, now=NOW, max_pages=2)
+        self.assertEqual(cut, '2026-11-07T20:44:00-08:00')  # history left unread: the oldest read is reported
+
+
+# ---------------------------------------------------------------- the pages that replaced RSS (2026-10-28)
+NOW = '2026-11-10T07:30:00-05:00'
+
+
+def status_it(sid, at, book_id, title_text, page, total, note=None):
+    return {'guid': f'UserStatus{sid}', 'sid': str(sid), 'text': f'Dan is on page {page} of {total} of {title_text}', 'title': title_text,
+            'book_id': str(book_id), 'note': note, 'when_text': '', 'at': at, 'source': 'status'}
+
+
+def widget_it(t, author, review, book_id, shelf=''):
+    it = dict.fromkeys(gs.RSS_FIELDS, '')
+    link = f'https://www.goodreads.com/review/show/{review}'
+    it.update({'title': t, 'author_name': author, 'book_id': str(book_id), 'link': link, 'guid': link, 'review_id': str(review), 'shelf': shelf, 'source': 'widget'})
+    return it
+
+
+def run_row(ws, asked, snapshot=None, newest=None):
+    ev = {'at': asked, 'window': {'oldest': None, 'newest': newest, 'n': 0}}
+    if snapshot is not None:
+        ev['snapshot'] = snapshot
+    return ws.question('Sync run', f'Sync run {asked}', 'run:' + asked, status='Done', asked=asked, event=ev)
+
+
+class StatusListTests(unittest.TestCase):
+    def test_parses_the_real_page(self):
+        items, total = gs.status_items((FIX / 'status_list.html').read_bytes(), '2026-11-10T08:18:00-05:00')
+        self.assertEqual((total, len(items)), (210, 6))
+        first = items[0]
+        self.assertEqual((first['guid'], first['book_id'], first['title'], first['when_text']), ('UserStatus1362767870', '5797', 'Vanity Fair', '15 hours, 59 min ago'))
+        self.assertEqual(first['at'], '2026-11-09T16:19:00-05:00')  # counted back from the fetch
+        self.assertEqual(items[1]['at'], '2026-11-08T20:44:00-08:00')  # absolute times are Pacific
+        self.assertEqual(items[-1]['note'], 'Quite the bedtime story.')
+        ev = gs.status_event(items[1])
+        self.assertEqual((ev['kind'], ev['page'], ev['total'], ev['percent'], ev['title'], ev['gr_book_id']),
+                         ('progress', 419, 964, 43.5, 'Lonesome Dove (Lonesome Dove, #1)', '56346987'))
+        self.assertEqual(gs.local_date(ev['at']), '2026-11-08')
+
+    def test_times(self):
+        t = gs.status_time
+        self.assertEqual(t('Sep 29, 2026 12:46PM', NOW), '2026-09-29T12:46:00-07:00')
+        self.assertEqual(t('1 hour ago', NOW), '2026-11-10T06:30:00-05:00')
+        self.assertEqual(t('about 2 hours, 5 min ago', NOW), '2026-11-10T05:25:00-05:00')
+        self.assertEqual(t('less than a minute ago', NOW), '2026-11-10T07:30:00-05:00')
+        self.assertIsNone(t('a while back', NOW))
+
+    def test_percent_update(self):
+        ev = gs.status_event(dict(status_it(1, NOW, 19089, 'Middlemarch', 1, 1), text='Dan is 35% done with Middlemarch'))
+        self.assertEqual((ev['kind'], ev.get('page'), ev['percent'], ev['title']), ('progress', None, 35, 'Middlemarch'))
+
+    def test_not_a_status_page_raises(self):
+        with self.assertRaises(gs.PageError):
+            gs.status_items(b'<html><title>Sign in | Goodreads</title></html>', NOW)
+
+
+class WidgetTests(unittest.TestCase):
+    def test_parses_the_real_widget(self):
+        items = gs.widget_items((FIX / 'widget_currently-reading.js').read_bytes(), 'currently-reading')
+        self.assertEqual([(i['title'], i['author_name'], i['book_id'], i['review_id']) for i in items], [
+            ('Vanity Fair', 'William Makepeace Thackeray', '5797', '9036750414'),
+            ('Fundamentals of Software Architecture: A Modern Engineering Approach', 'Mark Richards', '229076154', '8985213234'),
+            ('Lonesome Dove', 'Larry McMurtry', '56346987', '7521001057')])
+        self.assertEqual((items[0]['user_date_added'], items[0]['source']), ('', 'widget'))
+
+    def test_entities_and_apostrophes(self):
+        items = gs.widget_items((FIX / 'widget_did-not-finish.js').read_bytes(), 'did-not-finish')
+        self.assertEqual(items[0]['title'], "A Student's Introduction to English Grammar")
+
+    def test_a_widget_for_another_shelf_raises(self):
+        with self.assertRaises(gs.PageError):
+            gs.widget_items((FIX / 'widget_did-not-finish.js').read_bytes(), 'read')
+
+    def test_a_rejected_widget_raises(self):
+        with self.assertRaises(gs.PageError):
+            gs.widget_items(b"var widget_code = 'This Goodreads widget is not correct'", 'read')
+
+
+class StatusSyncTests(unittest.TestCase):
+    def setUp(self):
+        self.ws = Workspace()
+        self.book = self.ws.book('Vanity Fair', 'William Makepeace Thackeray')
+        self.read = self.ws.read('Vanity Fair · 2026', self.book, started='2026-10-18')
+        run_row(self.ws, '2026-11-08T07:00:00-05:00')  # watermark 2026-11-06 07:00 Eastern
+
+    def test_status_update_is_logged_with_its_goodreads_id(self):
+        self.ws.sync([status_it(1361340897, '2026-11-06T15:06:00-08:00', 5797, 'Vanity Fair', 534, 867)], now=NOW)
+        rows = self.ws.n.creates(LOG_DS)
+        self.assertEqual(len(rows), 1)
+        self.assertEqual((_plain(rows[0]['Goodreads id']['rich_text']), rows[0]['Page']['number'], rows[0]['When']['date']['start']),
+                         ('UserStatus1361340897', 534, '2026-11-06T15:06:00-08:00'))
+        self.assertIn('2026-11-06', _plain(rows[0]['Name']['title']))  # 18:06 Eastern
+
+    def test_a_hand_typed_row_a_day_off_is_the_same_update(self):
+        self.ws.log('Manual:x:2026-11-07:p534', self.read, self.book, 'Progress', '2026-11-07', page=534)
+        report, _ = self.ws.sync([status_it(1361340897, '2026-11-06T15:06:00-08:00', 5797, 'Vanity Fair', 534, 867)], now=NOW)
+        self.assertEqual(self.ws.n.creates(LOG_DS), [])
+        self.assertEqual(report['already'], 1)
+
+    def test_author_comes_from_the_shelf_for_matching(self):
+        self.ws.book('Vanity Fair', 'Somebody Else')  # two Books with this title: only the author tells them apart
+        self.ws.sync([status_it(1, '2026-11-06T15:06:00-08:00', 5797, 'Vanity Fair', 534, 867)],
+                     shelf=[widget_it('Vanity Fair', 'William Makepeace Thackeray', 9036750414, 5797)], now=NOW)
+        rows = self.ws.n.creates(LOG_DS)
+        self.assertEqual(rows[0]['Read']['relation'][0]['id'], self.read)
+
+    def test_unread_history_raises_a_gap(self):
+        report, _ = self.ws.sync([], now=NOW, history_cut='2026-11-08T12:00:00-08:00')
+        gaps = [q for q in report['questions'] if q['kind'] == 'Gap']
+        self.assertEqual([q['key'] for q in gaps], ['statuscut:2026-11-06T07:00:00-05:00'])
+        self.assertIn('since=2026-11-06', gaps[0]['proposed'])
+
+    def test_no_gap_when_the_history_was_read_past_the_watermark(self):
+        report, _ = self.ws.sync([], now=NOW, history_cut='2026-10-20T12:00:00-07:00')
+        self.assertEqual([q for q in report['questions'] if q['kind'] == 'Gap'], [])
+
+
+class WidgetShelfTests(unittest.TestCase):
+    """Shelf changes from the widget: no dates, so starts and finishes are what changed since the last run."""
+
+    def setUp(self):
+        self.ws = Workspace()
+        self.dino = self.ws.book('Uncovering Dinosaur Behavior: What They Did and How We Know', 'David Hone')
+        self.release = self.ws.book('Release It!', 'Michael T. Nygard')
+
+    def read_shelf(self):
+        return [widget_it('Uncovering Dinosaur Behavior: What They Did and How We Know', 'David Hone', 9032584894, 208842400),
+                widget_it('Release It!: Design and Deploy Production-Ready Software', 'Michael T. Nygard', 8984202464, 38733031)]
+
+    def test_shelf_day_is_the_most_recent_evening(self):
+        run = gs.Run(gs.Store(self.ws.n, None, today='2026-11-10'), gs.Library(None), None, {'book_cache': {}})
+        run.store.now = '2026-11-10T07:30:00-05:00'
+        self.assertEqual(run.shelf_day(), '2026-11-09')  # a morning run: last night
+        run.store.now = '2026-11-10T23:50:00-05:00'
+        self.assertEqual(run.shelf_day(), '2026-11-10')  # a run on schedule: this evening
+        run.store.now, run.last_run_at = '2026-11-10T07:30:00-05:00', '2026-11-10T01:00:00-05:00'
+        self.assertEqual(run.shelf_day(), '2026-11-10')  # never before the last run
+
+    def test_first_run_closes_an_open_read_on_the_read_shelf_with_an_estimated_date(self):
+        r = self.ws.read('Uncovering Dinosaur Behavior · 2026', self.dino, started='2026-10-17')
+        self.ws.log('UserStatus1351221912', r, self.dino, 'Progress', '2026-10-17T12:17:00-07:00', page=73)
+        run_row(self.ws, '2026-10-27T07:00:00-04:00')  # an RSS-era run: no snapshot yet
+        report, _ = self.ws.sync([], read_shelf=self.read_shelf(), now=NOW)
+        up = self.ws.n.updates(r)[0]
+        self.assertEqual((up['Outcome']['select']['name'], up['Ended']['date']['start']), ('Finished', '2026-11-09'))
+        self.assertIn('estimated', _plain(up['Notes']['rich_text']))
+        q = [q for q in report['questions'] if q['kind'] == 'Pages read'][0]
+        self.assertIn('(estimated)', q['proposed'])
+        self.assertIn('around 2026-11-09', q['question'])
+        self.assertEqual(self.ws.n.updates(self.release), [])  # no open Read, no snapshot: old history is left alone
+
+    def test_with_a_snapshot_an_old_item_never_closes_an_open_read(self):
+        r = self.ws.read('Release It! · 2026 (reread)', self.release, started='2026-11-01')  # a reread Goodreads was not told about
+        run_row(self.ws, '2026-11-09T07:00:00-05:00', snapshot={'read': ['9032584894', '8984202464'], 'to_read_hwm': 9083075546})
+        self.ws.sync([], read_shelf=self.read_shelf(), now=NOW)
+        self.assertEqual(self.ws.n.updates(r), [])
+        self.assertEqual(self.ws.n.creates(LOG_DS), [])
+
+    def test_a_new_finish_with_no_read_is_questioned(self):
+        run_row(self.ws, '2026-11-09T07:00:00-05:00', snapshot={'read': ['8984202464'], 'to_read_hwm': 9083075546})
+        report, _ = self.ws.sync([], read_shelf=self.read_shelf(), now=NOW)
+        q = [q for q in report['questions'] if q['book'] == self.dino]
+        self.assertEqual(q[0]['kind'], 'Finish date')
+        self.assertEqual(q[0]['event']['guid'], 'Shelf9032584894:finished:2026-11-09')
+
+    def test_a_new_finish_dan_already_closed_attaches_to_his_date(self):
+        r = self.ws.read('Uncovering Dinosaur Behavior · 2026', self.dino, started='2026-10-17', ended='2026-11-07', outcome='Finished', pages_read=240)
+        run_row(self.ws, '2026-11-09T07:00:00-05:00', snapshot={'read': ['8984202464'], 'to_read_hwm': 9083075546})
+        report, _ = self.ws.sync([], read_shelf=self.read_shelf(), now=NOW)
+        self.assertEqual(report['questions'], [])
+        rows = self.ws.n.creates(LOG_DS)
+        self.assertEqual((rows[0]['Kind']['select']['name'], rows[0]['When']['date']['start'], rows[0]['Read']['relation'][0]['id']), ('Finished', '2026-11-07', r))
+        self.assertEqual(self.ws.n.updates(r), [])
+
+    def test_finish_is_never_dated_before_the_last_page_update(self):
+        r = self.ws.read('Uncovering Dinosaur Behavior · 2026', self.dino, started='2026-10-17')
+        run_row(self.ws, '2026-11-09T07:00:00-05:00', snapshot={'read': ['8984202464'], 'to_read_hwm': 9083075546})
+        self.ws.sync([status_it(7, '2026-11-09T21:30:00-08:00', 208842400, 'Uncovering Dinosaur Behavior', 240, 248)], read_shelf=self.read_shelf(), now=NOW)
+        self.assertEqual(self.ws.n.updates(r)[-1]['Ended']['date']['start'], '2026-11-10')  # 00:30 Eastern on the 10th
+
+    def test_currently_reading_only_starts_books_with_no_open_read(self):
+        lonesome = self.ws.book('Lonesome Dove', 'Larry McMurtry')
+        vf = self.ws.book('Vanity Fair', 'William Makepeace Thackeray')
+        self.ws.read('Vanity Fair · 2026', vf, started='2026-10-18')
+        run_row(self.ws, '2026-11-09T07:00:00-05:00', snapshot={})
+        self.ws.sync([], shelf=[widget_it('Vanity Fair', 'William Makepeace Thackeray', 9036750414, 5797),
+                                widget_it('Lonesome Dove', 'Larry McMurtry', 7521001057, 56346987)], now=NOW)
+        new = self.ws.n.creates(READS_DS)
+        self.assertEqual(len(new), 1)
+        self.assertEqual((_plain(new[0]['Read']['title']), new[0]['Started']['date']['start'], new[0]['Dates estimated']['checkbox']),
+                         ('Lonesome Dove · 2026', '2026-11-09', True))
+        self.assertEqual([_plain(r['Goodreads id']['rich_text']) for r in self.ws.n.creates(LOG_DS)], ['Shelf7521001057:started:2026-11-09'])
+
+    def test_to_read_takes_only_review_ids_above_the_mark(self):
+        self.ws.book('Code: The Hidden Language of Computer Hardware and Software', 'Charles Petzold', lists=['Goodreads WTR'], wishlisted='2026-11-01')
+        run_row(self.ws, '2026-11-09T07:00:00-05:00', snapshot={'to_read_hwm': 9077439507})
+        report, _ = self.ws.sync([], to_read=[widget_it('Potato: A History of the Propitious Esculent', 'John Reader', 9083075546, 6334219),
+                                              widget_it('Code: The Hidden Language of Computer Hardware and Software', 'Charles Petzold', 9077439507, 44882),
+                                              widget_it('Middlemarch', 'George Eliot', 100, 19089)], now=NOW)
+        created = [_plain(p['Title']['title']) for p in self.ws.n.creates(BOOKS_DS)]
+        self.assertEqual(created, ['Potato: A History of the Propitious Esculent'])
+        self.assertEqual(self.ws.n.creates(BOOKS_DS)[0]['Wishlisted']['date']['start'], '2026-11-09')
+        run = [r for r in self.ws.queue_rows(kind='Sync run') if r['asked'] == NOW][0]
+        self.assertEqual(run['event']['snapshot']['to_read_hwm'], 9083075546)
+
+    def test_to_read_before_any_widget_run_uses_the_bootstrap_mark(self):
+        run_row(self.ws, '2026-10-27T07:00:00-04:00')
+        self.ws.sync([], to_read=[widget_it('Potato: A History of the Propitious Esculent', 'John Reader', 9083075546, 6334219),
+                                  widget_it('Older Book', 'Some One', gs.TO_READ_BOOTSTRAP_REVIEW, 1)], now=NOW)
+        self.assertEqual([_plain(p['Title']['title']) for p in self.ws.n.creates(BOOKS_DS)], ['Potato: A History of the Propitious Esculent'])
+
+    def test_a_full_widget_does_not_report_removals(self):
+        self.ws.book('Middlemarch', 'George Eliot', lists=['Goodreads WTR'])
+        run_row(self.ws, '2026-11-09T07:00:00-05:00', snapshot={'to_read_hwm': 9999999999})
+        full = [widget_it(f'Book {i}', 'A. Writer', 5000 + i, i) for i in range(gs.WIDGET_CAP)]
+        report, _ = self.ws.sync([], to_read=full, now=NOW)
+        self.assertEqual(report['wishlist_removed'], [])
+        report, _ = self.ws.sync([], to_read=full[:3], now=NOW)
+        self.assertEqual([r['title'] for r in report['wishlist_removed']], ['Middlemarch'])  # a short list is the whole shelf
+
+    def test_the_run_row_keeps_a_long_snapshot_whole(self):
+        run_row(self.ws, '2026-11-09T07:00:00-05:00', snapshot={})
+        many = [widget_it(f'Book {i}', 'A. Writer', 8000000000 + i, i) for i in range(60)]
+        self.ws.sync([], read_shelf=many, dnf_shelf=many[:40], now=NOW)
+        run = [r for r in self.ws.queue_rows(kind='Sync run') if r['asked'] == NOW][0]
+        self.assertEqual((len(run['event']['snapshot']['read']), len(run['event']['snapshot']['did-not-finish'])), (gs.READ_SNAPSHOT, gs.DNF_SNAPSHOT))
+
+    def test_long_rich_text_is_split_not_cut(self):
+        v = gs.rt_long('x' * 4500)
+        self.assertEqual([len(t['text']['content']) for t in v['rich_text']], [2000, 2000, 500])
+        self.assertEqual(len(gs.prop_text(v)), 4500)
 
 
 class PartialRunTests(unittest.TestCase):

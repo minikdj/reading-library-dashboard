@@ -187,6 +187,8 @@ Questions are confirmations, not blockers: Notion is updated with the default fi
 
 The job reads only the public RSS feeds, anonymously, with the generic User-Agent. No Goodreads/Amazon password, session cookie or `key=` token is stored in GitHub or the repo (the `GOODREADS_RSS_KEY` path stays in the code for the private-profile case only). Review pages (the full reading-progress timeline) are not fetched by the job. When the gap check reports a span worth recovering, Dan fills it on request from his own machine: Claude reads the affected review pages in the signed-in browser pane and writes the missing Reading log rows with their `Timeline<review>:<n>` ids, exactly as the backfill did. Document this as `docs/GAP_FILL.md` (the one-time procedure, with the dedupe keys).
 
+**Amended 2026-11-10 (Dan approved):** Goodreads retired the RSS feeds on 2026-10-28. The rule stands with "public pages" for "public RSS feeds": the job reads the public status list (every page update, with times) and the public shelf widget (no dates), still anonymously, still with no credentials. Shelf changes are found against the last run's snapshot and dated by estimate; `sync/README.md` ("Sources since 2026-11-10") has the details. The `GOODREADS_RSS_KEY` path is gone with the feeds.
+
 ## Full-cycle test plan (what "made and tested" means)
 
 Claude Code runs 1–4; Dan takes part in 5–7. Each step has a pass condition; stop and report at the first failure.
