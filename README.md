@@ -44,6 +44,12 @@ The repo is the source of truth and the artifact is a published copy: the artifa
 
 Steps 1, 5 and 6 go through Claude's tools, not the shell.
 
+## Reading this week (mobile dashboard)
+
+A second, phone-first Dashboard artifact (https://claude.ai/artifact/7YDihQYr4THhr4bfQAr5zm) for the last week's reading, open reads and books finished this year. Unlike the main dashboard it reads Notion live, with two SQL queries per load (the Reading log packed one row per month, and every Read packed one row per year) cached for an hour; the week arrows re-slice that data in the browser and never call Notion, which keeps it inside the plan's hourly SQL allowance. Its page lives only in the artifact's store, not in this repo.
+
+Tapping a title opens a book card. Its details come from an attached snapshot, `data/out/ds/book_cards.json` (every Book with a Read: authors, year, pages, form, genres, lists, editions), built by `python3 pipeline/book_cards.py` from `data/raw/`. After a fresh pull, rebuild it, upload it as an asset on that artifact and point the `book_cards` dataset at the new blob. Read history on the card is live.
+
 ## Goodreads sync
 
 Dan marks books started, finished and page-by-page on Goodreads; the nightly job in `sync/` copies those events into Notion (the Reading log), creates and closes Reads from them, keeps the wishlist tagged, and asks a question in the Notion **Sync queue** for every uncertain case with the default already applied. Answers come by chat ("anything to resolve?", "confirm all", "N: Paper") or by ticking `Confirm` in Notion; the next run applies them. The dashboard's **Unconfirmed** tile counts the open questions (dataset `sync_queue`, from `python3 sync/goodreads_sync.py --export-queue data/out/sync_queue.json` before a refresh). Details and invariants: `sync/README.md`; the specification: `docs/SYNC_REVIEW.md`.
